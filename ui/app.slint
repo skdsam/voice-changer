@@ -1,0 +1,191 @@
+import { ComboBox, CheckBox } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    title: "Antigravity Voice Changer";
+    min-width: 450px;
+    min-height: 600px;
+    background: #1e1e1e;
+
+    callback toggle-audio();
+    callback select-effect(int);
+    callback select-input-device(string);
+    callback select-output-device(string);
+    callback select-monitor-device(string);
+    callback toggle-monitor(bool);
+
+    in-out property <bool> audio-active: false;
+    in property <[string]> input-devices: ["Default"];
+    in property <[string]> output-devices: ["Default"];
+    in property <string> current-input: "Default";
+    in property <string> current-output: "Default";
+    in property <string> current-monitor: "Default";
+    in-out property <bool> monitor-active: false;
+
+    VerticalLayout {
+        padding: 20px;
+        spacing: 15px;
+
+        Text {
+            text: "Antigravity Voice Changer";
+            color: #ffffff;
+            font-size: 20px;
+            font-weight: 700;
+            horizontal-alignment: center;
+        }
+
+        // Status Area
+        HorizontalLayout {
+            spacing: 10px;
+            alignment: center;
+            Text { text: "Status:"; color: #aaaaaa; }
+            Text {
+                text: audio-active ? "ACTIVE" : "INACTIVE";
+                color: audio-active ? #4caf50 : #f44336;
+                font-weight: 700;
+            }
+        }
+
+        // Device Selection Section
+        Rectangle {
+            background: #252525;
+            border-radius: 4px;
+            padding: 10px;
+            VerticalLayout {
+                padding: 10px;
+                spacing: 10px;
+                Text { text: "Audio Settings"; color: #ffffff; font-weight: 600; }
+                
+                HorizontalLayout {
+                    spacing: 10px;
+                    VerticalLayout {
+                        Text { text: "Input (Mic)"; color: #aaaaaa; font-size: 12px; }
+                        ComboBox {
+                            model: input-devices;
+                            current-value: current-input;
+                            selected(val) => { select-input-device(val) }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 10px;
+                    VerticalLayout {
+                        Text { text: "Output (Virtual Cable)"; color: #aaaaaa; font-size: 12px; }
+                        ComboBox {
+                            model: output-devices;
+                            current-value: current-output;
+                            selected(val) => { select-output-device(val) }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 10px;
+                    VerticalLayout {
+                        Text { text: "Monitor (Headphones)"; color: #aaaaaa; font-size: 12px; }
+                        ComboBox {
+                            model: output-devices;
+                            current-value: current-monitor;
+                            selected(val) => { select-monitor-device(val) }
+                        }
+                    }
+                }
+
+                HorizontalLayout {
+                    spacing: 10px;
+                    alignment: start;
+                    CheckBox {
+                        text: "Enable Monitoring";
+                        checked: monitor-active;
+                        toggled => { monitor-active = !monitor-active; toggle-monitor(monitor-active) }
+                    }
+                }
+            }
+        }
+
+        // Processing Toggle
+        Rectangle {
+            height: 40px;
+            background: audio-active ? #2a3a2a : #252525;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: #444444;
+            TouchArea { clicked => { toggle-audio() } }
+            Text { text: "Toggle Audio Processing"; color: #ffffff; }
+        }
+
+        // Simple Effect Buttons (Removed loop for debugging)
+        Text { text: "Select Effect"; color: #ffffff; font-weight: 600; }
+        
+        HorizontalLayout {
+            spacing: 5px;
+            Rectangle { 
+                height: 30px; background: #333; border-radius: 4px;
+                TouchArea { clicked => { select-effect(0) } }
+                Text { text: "None"; color: #fff; }
+            }
+            Rectangle { 
+                height: 30px; background: #333; border-radius: 4px;
+                TouchArea { clicked => { select-effect(1) } }
+                Text { text: "Robot"; color: #fff; }
+            }
+        }
+        
+        HorizontalLayout {
+            spacing: 5px;
+            Rectangle { 
+                height: 30px; background: #333; border-radius: 4px;
+                TouchArea { clicked => { select-effect(2) } }
+                Text { text: "Megaphone"; color: #fff; }
+            }
+            Rectangle { 
+                height: 30px; background: #333; border-radius: 4px;
+                TouchArea { clicked => { select-effect(3) } }
+                Text { text: "Deep"; color: #fff; }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 5px;
+            Rectangle { 
+                height: 30px; background: #333; border-radius: 4px;
+                TouchArea { clicked => { select-effect(4) } }
+                Text { text: "High"; color: #fff; }
+            }
+            Rectangle { 
+                height: 30px; background: #333; border-radius: 4px;
+                TouchArea { clicked => { select-effect(5) } }
+                Text { text: "Echo"; color: #fff; }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 5px;
+            Rectangle { 
+                height: 30px; background: #333; border-radius: 4px;
+                TouchArea { clicked => { select-effect(6) } }
+                Text { text: "Alien"; color: #fff; }
+            }
+            Rectangle { 
+                height: 30px; background: #333; border-radius: 4px;
+                TouchArea { clicked => { select-effect(7) } }
+                Text { text: "Radio"; color: #fff; }
+            }
+        }
+
+        HorizontalLayout {
+            spacing: 5px;
+            Rectangle { 
+                height: 30px; background: #333; border-radius: 4px;
+                TouchArea { clicked => { select-effect(8) } }
+                Text { text: "Demon"; color: #fff; }
+            }
+            Rectangle { 
+                height: 30px; background: transparent; // Spacer
+            }
+        }
+
+        Rectangle { vertical-stretch: 1; }
+        Text { text: "v0.1.0-alpha"; color: #555555; font-size: 11px; horizontal-alignment: center; }
+    }
+}

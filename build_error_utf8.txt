@@ -1,0 +1,296 @@
+﻿cargo :     
+Checking 
+rust-voice-changer 
+v0.1.0 (C:\Users\sk
+dso\.gemini\antigra
+vity\scratch\rust-v
+oice-changer)
+At line:1 char:1
++ cargo check 2> bu
+ild_error_fresh.txt
+; Get-Content 
+-Path 
+.\\build_erro ...
++ ~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo 
+             : No  
+  tSpecified: (    
+    Checking ru    
+...-voice-chan    
+ger):String) [    
+], RemoteExcep    
+tion
+    + FullyQualifi 
+   edErrorId : Na  
+  tiveCommandErr   
+ or
+ 
+error[E0405]: 
+cannot find trait 
+`AudioUnit64` in 
+this scope
+  --> src\audio\eff
+ects.rs:12:59
+   |
+12 | pub fn create_
+effect_chain(effect
+: EffectType) -> 
+Box<dyn 
+AudioUnit64> {
+   |               
+                   
+                   
+      ^^^^^^^^^^^ 
+help: a trait with 
+a similar name 
+exists: `AudioUnit`
+   |
+  ::: C:\Users\skds
+o\.cargo\registry\s
+rc\index.crates.io-
+1949cf8c6b5b557f\fu
+ndsp-0.20.0\src\aud
+iounit.rs:21:1
+   |
+21 | pub trait 
+AudioUnit: Send + 
+Sync + DynClone {
+   | --------------
+-------------------
+---------- 
+similarly named 
+trait `AudioUnit` 
+defined here
+
+error[E0405]: 
+cannot find trait 
+`AudioUnit64` in 
+this scope
+  --> src\audio\eff
+ects.rs:14:57
+   |
+14 |         
+EffectType::None 
+=> 
+Box::new(pass()) 
+as Box<dyn 
+AudioUnit64>,
+   |               
+                   
+                   
+    ^^^^^^^^^^^ 
+help: a trait with 
+a similar name 
+exists: `AudioUnit`
+   |
+  ::: C:\Users\skds
+o\.cargo\registry\s
+rc\index.crates.io-
+1949cf8c6b5b557f\fu
+ndsp-0.20.0\src\aud
+iounit.rs:21:1
+   |
+21 | pub trait 
+AudioUnit: Send + 
+Sync + DynClone {
+   | --------------
+-------------------
+---------- 
+similarly named 
+trait `AudioUnit` 
+defined here
+
+error[E0405]: 
+cannot find trait 
+`AudioUnit64` in 
+this scope
+  --> src\audio\eff
+ects.rs:16:85
+   |
+16 |             
+Box::new(pass() * 
+sine_hz(440.0) >> 
+lowpass_hz(2000.0, 
+1.0)) as Box<dyn 
+AudioUnit64>
+   |               
+                   
+                   
+                   
+             
+^^^^^^^^^^^ help: 
+a trait with a 
+similar name 
+exists: `AudioUnit`
+   |
+  ::: C:\Users\skds
+o\.cargo\registry\s
+rc\index.crates.io-
+1949cf8c6b5b557f\fu
+ndsp-0.20.0\src\aud
+iounit.rs:21:1
+   |
+21 | pub trait 
+AudioUnit: Send + 
+Sync + DynClone {
+   | --------------
+-------------------
+---------- 
+similarly named 
+trait `AudioUnit` 
+defined here
+
+error[E0405]: 
+cannot find trait 
+`AudioUnit64` in 
+this scope
+  --> src\audio\eff
+ects.rs:19:69
+   |
+19 |             Bo
+x::new(bandpass_hz(
+1000.0, 1.0) >> 
+clip()) as Box<dyn 
+AudioUnit64>
+   |               
+                   
+                   
+                
+^^^^^^^^^^^ help: 
+a trait with a 
+similar name 
+exists: `AudioUnit`
+   |
+  ::: C:\Users\skds
+o\.cargo\registry\s
+rc\index.crates.io-
+1949cf8c6b5b557f\fu
+ndsp-0.20.0\src\aud
+iounit.rs:21:1
+   |
+21 | pub trait 
+AudioUnit: Send + 
+Sync + DynClone {
+   | --------------
+-------------------
+---------- 
+similarly named 
+trait `AudioUnit` 
+defined here
+
+error[E0405]: 
+cannot find trait 
+`AudioUnit64` in 
+this scope
+  --> src\audio\eff
+ects.rs:22:80
+   |
+22 |             Bo
+x::new(lowpass_hz(4
+00.0, 2.0) >> 
+peak_hz(300.0, 
+1.0)) as Box<dyn 
+AudioUnit64>
+   |               
+                   
+                   
+                   
+        
+^^^^^^^^^^^ help: 
+a trait with a 
+similar name 
+exists: `AudioUnit`
+   |
+  ::: C:\Users\skds
+o\.cargo\registry\s
+rc\index.crates.io-
+1949cf8c6b5b557f\fu
+ndsp-0.20.0\src\aud
+iounit.rs:21:1
+   |
+21 | pub trait 
+AudioUnit: Send + 
+Sync + DynClone {
+   | --------------
+-------------------
+---------- 
+similarly named 
+trait `AudioUnit` 
+defined here
+
+error[E0405]: 
+cannot find trait 
+`AudioUnit64` in 
+this scope
+  --> src\audio\eff
+ects.rs:25:83
+   |
+25 |             Bo
+x::new(highpass_hz(
+1000.0, 1.0) >> 
+peak_hz(2000.0, 
+1.0)) as Box<dyn 
+AudioUnit64>
+   |               
+                   
+                   
+                   
+           
+^^^^^^^^^^^ help: 
+a trait with a 
+similar name 
+exists: `AudioUnit`
+   |
+  ::: C:\Users\skds
+o\.cargo\registry\s
+rc\index.crates.io-
+1949cf8c6b5b557f\fu
+ndsp-0.20.0\src\aud
+iounit.rs:21:1
+   |
+21 | pub trait 
+AudioUnit: Send + 
+Sync + DynClone {
+   | --------------
+-------------------
+---------- 
+similarly named 
+trait `AudioUnit` 
+defined here
+
+warning: unused 
+imports: 
+`Consumer` and 
+`Producer`
+ --> src\audio\engi
+ne.rs:4:15
+  |
+4 | use ringbuf::{C
+onsumer, Producer, 
+SharedRb};
+  |               
+^^^^^^^^  ^^^^^^^^
+  |
+  = note: `#[warn(u
+nused_imports)]` 
+(part of 
+`#[warn(unused)]`) 
+on by default
+
+For more 
+information about 
+this error, try 
+`rustc --explain 
+E0405`.
+warning: `rust-voic
+e-changer` (bin "ru
+st-voice-changer") 
+generated 1 warning
+error: could not 
+compile `rust-voice
+-changer` (bin "rus
+t-voice-changer") 
+due to 6 previous 
+errors; 1 warning 
+emitted

@@ -1,0 +1,103 @@
+﻿cargo :     
+Checking 
+rust-voice-changer 
+v0.1.0 (C:\Users\sk
+dso\.gemini\antigra
+vity\scratch\rust-v
+oice-changer)
+At line:1 char:1
++ cargo check 2> bu
+ild_error_tick.txt;
+ Get-Content .\\bui
+ld_error_tick. ...
++ ~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~
+    + CategoryInfo 
+             : No  
+  tSpecified: (    
+    Checking ru    
+...-voice-chan    
+ger):String) [    
+], RemoteExcep    
+tion
+    + FullyQualifi 
+   edErrorId : Na  
+  tiveCommandErr   
+ or
+ 
+error[E0308]: 
+mismatched types
+  --> src\audio\eng
+ine.rs:85:35
+   |
+85 |               
+      effect.tick(&
+[input_sample as 
+f64], &mut 
+out_buf);
+   |               
+                   
+ ^^^^^^^^^^^^^^^^^^
+^ expected `f32`, 
+found `f64`
+
+error[E0308]: 
+mismatched types
+  --> src\audio\eng
+ine.rs:85:57
+   |
+85 |               
+      effect.tick(&
+[input_sample as 
+f64], &mut 
+out_buf);
+   |               
+             ----  
+                   
+    ^^^^^^^^^^^^ 
+expected `&mut 
+[f32]`, found 
+`&mut [f64; 1]`
+   |               
+             |
+   |               
+             
+arguments to this 
+method are 
+incorrect
+   |
+   = note: 
+expected mutable 
+reference `&mut 
+[f32]`
+              
+found mutable 
+reference `&mut 
+[f64; 1]`
+note: method 
+defined here
+  --> C:\Users\skds
+o\.cargo\registry\s
+rc\index.crates.io-
+1949cf8c6b5b557f\fu
+ndsp-0.20.0\src\aud
+iounit.rs:39:8
+   |
+39 |     fn 
+tick(&mut self, 
+input: &[f32], 
+output: &mut 
+[f32]);
+   |        ^^^^
+
+For more 
+information about 
+this error, try 
+`rustc --explain 
+E0308`.
+error: could not 
+compile `rust-voice
+-changer` (bin "rus
+t-voice-changer") 
+due to 2 previous 
+errors
