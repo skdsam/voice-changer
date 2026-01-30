@@ -4036,6 +4036,8 @@ dependencies = [
  "fundsp",
  "parking_lot",
  "ringbuf",
+ "serde",
+ "serde_json",
  "slint",
  "slint-build",
  "tokio",

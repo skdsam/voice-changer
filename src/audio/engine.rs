@@ -12,6 +12,8 @@ pub struct AudioEngine {
     output_stream: Option<cpal::Stream>,
     pub is_running: Arc<Mutex<bool>>,
     pub current_effect: Arc<Mutex<EffectType>>,
+    pub pitch: Arc<Mutex<f64>>,
+    pub intensity: Arc<Mutex<f64>>,
     pub selected_input: Arc<Mutex<Option<String>>>,
     pub selected_output: Arc<Mutex<Option<String>>>,
     pub selected_monitor: Arc<Mutex<Option<String>>>,
@@ -30,6 +32,8 @@ impl AudioEngine {
             output_stream: None,
             is_running: Arc::new(Mutex::new(false)),
             current_effect: Arc::new(Mutex::new(EffectType::None)),
+            pitch: Arc::new(Mutex::new(0.5)),
+            intensity: Arc::new(Mutex::new(0.5)),
             selected_input: Arc::new(Mutex::new(None)),
             selected_output: Arc::new(Mutex::new(None)),
             selected_monitor: Arc::new(Mutex::new(None)),
@@ -65,19 +69,19 @@ impl AudioEngine {
         let selected_output = self.selected_output.lock().clone();
 
         self.input_device = match selected_input {
-            Some(ref name) => self
+            Some(ref name) if name != "Default" => self
                 .host
                 .input_devices()?
                 .find(|d| d.name().ok().as_ref() == Some(name)),
-            None => self.host.default_input_device(),
+            _ => self.host.default_input_device(),
         };
 
         self.output_device = match selected_output {
-            Some(ref name) => self
+            Some(ref name) if name != "Default" => self
                 .host
                 .output_devices()?
                 .find(|d| d.name().ok().as_ref() == Some(name)),
-            None => self.host.default_output_device(),
+            _ => self.host.default_output_device(),
         };
 
         if self.input_device.is_none() || self.output_device.is_none() {
@@ -136,26 +140,44 @@ impl AudioEngine {
 
         // Processing thread
         let current_effect = self.current_effect.clone();
+        let current_pitch = self.pitch.clone();
+        let current_intensity = self.intensity.clone();
+
         std::thread::spawn(move || {
             let mut active_effect_type = EffectType::None;
-            let mut active_effect = create_effect_chain(active_effect_type);
+            let mut last_pitch = 0.5f32;
+            let mut last_intensity = 0.5f32;
+            let mut active_effect =
+                create_effect_chain(active_effect_type, last_pitch, last_intensity);
             let mut out_buf = [0.0f32];
+            let mut sample_count = 0;
 
             while *is_running_thread.lock() {
                 if let Some(sample) = cons_in.pop() {
-                    // Check effect change
-                    {
+                    // Check effect or parameter change every 128 samples
+                    sample_count += 1;
+                    if sample_count >= 128 {
+                        sample_count = 0;
                         let et = *current_effect.lock();
-                        if et != active_effect_type {
+                        let p = *current_pitch.lock() as f32;
+                        let i = *current_intensity.lock() as f32;
+
+                        if et != active_effect_type
+                            || (p - last_pitch).abs() > 0.01
+                            || (i - last_intensity).abs() > 0.01
+                        {
                             active_effect_type = et;
-                            active_effect = create_effect_chain(active_effect_type);
+                            last_pitch = p;
+                            last_intensity = i;
+                            active_effect =
+                                create_effect_chain(active_effect_type, last_pitch, last_intensity);
                         }
                     }
 
                     active_effect.tick(&[sample], &mut out_buf);
                     let processed = out_buf[0];
 
-                    // Block push if ring buffer is full to avoid stuttering
+                    // Block push if ring buffer is full
                     while prod_out.push(processed).is_err() {
                         if !*is_running_thread.lock() {
                             return;
@@ -167,7 +189,7 @@ impl AudioEngine {
                         let _ = p.push(processed);
                     }
                 } else {
-                    std::thread::sleep(std::time::Duration::from_micros(500));
+                    std::thread::sleep(std::time::Duration::from_micros(100));
                 }
             }
         });
@@ -241,5 +263,25 @@ impl AudioEngine {
         self.output_stream = None;
         self.monitor_stream = None;
         *self.is_running.lock() = false;
+    }
+
+    pub fn toggle_monitor(&mut self, active: bool) -> anyhow::Result<()> {
+        *self.monitor_enabled.lock() = active;
+        if *self.is_running.lock() {
+            // If running, we need to restart streams to apply monitor change
+            // This is a simple implementation; more robust would be dynamic stream addition
+            self.stop();
+            self.setup_devices()?;
+            self.start()?;
+        }
+        Ok(())
+    }
+
+    pub fn get_current_input_name(&self) -> Option<String> {
+        self.input_device.as_ref().and_then(|d| d.name().ok())
+    }
+
+    pub fn get_current_output_name(&self) -> Option<String> {
+        self.output_device.as_ref().and_then(|d| d.name().ok())
     }
 }
