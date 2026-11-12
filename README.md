@@ -56,7 +56,7 @@ Headphone monitoring has a separate stream, supported-rate negotiation and bound
 .\.venv\Scripts\python.exe -m unittest -v test_presets test_voice_effects test_monitoring test_voice_editing
 ```
 
-25 tests cover preset streaming, pitch accuracy, formant behavior, ring-modulation sidebands, effect order, settings compatibility, monitoring isolation, sample-rate fallback and resampling continuity. Hardware startup is mocked in the suite.
+29 tests cover preset streaming, pitch accuracy, formant behavior, ring-modulation sidebands, effect order, settings compatibility, monitoring isolation, sample-rate fallback and resampling continuity. Hardware startup is mocked in the suite.
 
 ## Listening comparisons
 
@@ -102,3 +102,21 @@ python -m unittest -v test_presets test_voice_effects test_voice_editing test_mo
 ```
 
 Tests include harmony layer frequencies/alignment, stable delay/resonator tails, bypass behavior, parameter bounds, saved settings and exact recall of the new presets. Use render_previews.py on the same speech recording to compare voices by listening.
+
+## Avoiding a doubled original voice with Voicemod's driver
+
+Voicemod itself can read the headset microphone and write its original voice to the same virtual output that Voice Studio uses. The Windows mixer then combines those two applications. Voicemod can also have a separate headphone-monitor feed. Hear myself in Voice Studio cannot otherwise control those other-process feeds.
+
+When using a Voicemod virtual output, Voice Studio now isolates its own feed: a Windows audio-session guard temporarily mutes only Voicemod.exe's rendering sessions on the selected virtual output and selected headphone endpoint. Other applications and the physical microphone's volume are not muted. Start also watches for newly created Voicemod sessions; Stop and normal window closure restore each session's previous mute state. If route isolation fails, startup fails or an active stream stops rather than silently continuing with mixed audio.
+
+This requires pycaw and its comtypes/psutil dependencies, included in requirements.txt. Update dependencies before starting:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+Forced termination cannot run normal restoration; if Voicemod remains muted afterward, reset its per-application output mute in the Windows volume mixer. This guard is specific to the existing Voicemod route; other virtual cables do not need it.
+
+For a recording test, select Microphone (Voicemod) in Windows Sound Recorder, start Voice Studio with Deep (Vader), and leave Hear myself unticked. Record a short phrase, stop recording, then play it back. The saved recording should contain the transformed voice, not a separate original-mic overlay. Harmony, doubler and delay presets deliberately contain layers, so Deep is a clearer isolation test.
+
+29 automated tests pass, including no raw input added to processed output, targeted competing-session muting, restoration, and failed-start cleanup. On the implementation machine, the live headset-to-virtual stream started with both competing Voicemod render feeds muted, then restored their original mute states on Stop. A synthetic 220-to-110 Hz pitch probe through the virtual device had the original frequency around 40 dB below the transformed frequency; this probe is not a substitute for listening to a speech recording.

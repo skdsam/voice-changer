@@ -13,6 +13,7 @@ from pedalboard.io import AudioFile
 from pedalboard import Resample, Limiter
 from voices import create_clean_voice
 from monitor_resampler import MonitorResampler
+from route_isolation import VoicemodSessionGuard
 
 
 class AudioEngine:
@@ -21,6 +22,7 @@ class AudioEngine:
         self.blocksize = blocksize  # 1024 samples (~23ms) provides smooth pitch shifting
 
         self.stream = None
+        self._route_guard = None
         self.is_running = False
 
         # Audio processing
@@ -320,6 +322,12 @@ class AudioEngine:
             callback=self._audio_callback
         )
         try:
+            if not self.preview_only and 'voicemod' in out_info['name'].lower():
+                names=[out_info['name']]
+                if self.monitor_device is not None:
+                    names.append(sd.query_devices(self.monitor_device)['name'])
+                self._route_guard=VoicemodSessionGuard(names)
+                self._route_guard.start()
             self.current_board.prepare(self.sample_rate, in_channels)
             self._limiter.reset()
             self.last_error = None
@@ -336,6 +344,9 @@ class AudioEngine:
         except Exception:
             self.stream.close()
             self.stream = None
+            if self._route_guard is not None:
+                self._route_guard.stop()
+                self._route_guard=None
             raise
 
     def stop(self):
@@ -361,5 +372,8 @@ class AudioEngine:
                 pass
             finally:
                 self.stream = None
+        if self._route_guard is not None:
+            self._route_guard.stop()
+            self._route_guard=None
         self.is_running = False
         self.current_rms_level = 0.0

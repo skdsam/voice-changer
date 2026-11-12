@@ -22,3 +22,7 @@ Installed separately through pip; their distributions include their own licenses
 - Pedalboard: https://github.com/spotify/pedalboard
 
 Consult each dependency's licenses before redistribution. This document does not relicense any component.
+
+- pycaw (Windows audio sessions): https://github.com/AndreMiras/pycaw
+- comtypes: https://github.com/enthought/comtypes
+- psutil: https://github.com/giampaolo/psutil

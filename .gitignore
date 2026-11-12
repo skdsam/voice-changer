@@ -13,3 +13,5 @@ analysis/
 .agents/
 skills-lock.json
 .publish-repo/
+
+.diagnostics/

@@ -656,6 +656,10 @@ class VoiceModApp:
             combo.configure(state='disabled' if running else 'readonly')
         self.refresh_btn.configure(state='disabled' if running else 'normal')
         self.hear_var.set(self.engine.monitor_enabled)
+        if running and self.engine._route_guard is not None:
+            self.route_label.configure(text='Processed output only. Competing Voicemod feeds are muted while Voice Studio runs.')
+        elif not running:
+            self.route_label.configure(text='Stopped. Hear myself controls headphone testing when you start again.')
         self._status((f'Headset preview / {self.selected_preset_name}. Other apps still use their normal microphone.'
                       if self.engine.preview_only else f'Live / {self.selected_preset_name}') if running else 'Stopped. Ready when you are.')
         if running and self.engine.monitor_error:
@@ -670,6 +674,11 @@ class VoiceModApp:
         canvas.create_rectangle(0, 0, canvas.winfo_width()*value, 8,
                                 fill=self.c['danger'] if db > -3 else self.c['accent'], width=0)
         self.meter_label.configure(text=f'MIC LEVEL  /  {db:.0f} dB' if level > 1e-6 else 'MIC LEVEL  /  -- dB')
+        if self.engine._route_guard is not None and self.engine._route_guard.error:
+            routing_error=self.engine._route_guard.error
+            if self.engine.is_running:
+                self._toggle_stream()
+            self._status(f'Stopped to prevent mixed audio: {routing_error}', True)
         if self.engine.last_error:
             self._status(f'Audio error: {self.engine.last_error}', True)
         self._meter_job = self.root.after(50, self._update_meter)
