@@ -26,6 +26,7 @@ class VoiceModApp:
         self.selected_preset_name = 'Clean (Normal)'
         self._editor_base_voice = None
         self._hotkey = None
+        self._voice_test = None
         self._hotkey_job = None
         self._slider_job = None
         self._syncing = True
@@ -95,6 +96,7 @@ class VoiceModApp:
         self.live_badge.pack(side='right')
         self.setup_btn = self._button(header, 'Audio setup', self._toggle_audio_setup)
         self.setup_btn.pack(side='right', padx=12)
+        self._button(header, 'Test voice', self._open_voice_test).pack(side='right')
 
     def _audio_panel(self):
         border = tk.Frame(self.root, bg=self.c['border'])
@@ -259,10 +261,12 @@ class VoiceModApp:
                            ('resonator_mix','Resonator blend',.05,'%')]),
             ('Delay', [('delay_ms','Echo time',5,'ms'),('delay_feedback','Feedback',.05,'%'),
                        ('delay_tone','Echo tone',100,'Hz'),('delay_mix','Echo blend',.05,'%')]),
+            ('Communications', [('comms_mode','Channel type',1,'channel'),('comms_drive','Channel drive',1,'dB'),('comms_gate','Radio gate threshold',1,'dB'),
+                 ('comms_static','Radio static',.05,'%'),('comms_click','End click',.05,'%'),('comms_mix','Channel blend',.05,'%')]),
             ('Parallel distortion', [('parallel_drive','Drive',1,'dB'),('parallel_mix','Rough layer blend',.05,'%')]),
         ])
         enable_keys={'Harmony':'harmony_enabled','Resonator':'resonator_enabled',
-                     'Delay':'delay_enabled','Parallel distortion':'parallel_enabled'}
+                     'Delay':'delay_enabled','Communications':'comms_enabled','Parallel distortion':'parallel_enabled'}
         self.extra_units = {}
         for title, settings in groups:
             tk.Frame(editor, bg=self.c['border'], height=1).pack(fill='x', pady=(8, 8))
@@ -446,6 +450,8 @@ class VoiceModApp:
 
     @staticmethod
     def _format_extra(value, unit):
+        if unit == 'channel':
+            return ('Off','Telephone','Radio')[int(value)]
         if unit == '%':
             return f'{value*100:.0f}%'
         return f'{value:+.1f} {unit}' if unit in ('st', 'dB') else f'{value:.0f} {unit}'
@@ -620,7 +626,30 @@ class VoiceModApp:
     def _status(self, text, error=False):
         self.status_lbl.configure(text=text, fg=self.c['danger'] if error else self.c['muted'])
 
+    def _open_voice_test(self):
+        if self._voice_test is not None and not self._voice_test.closed:
+            self._voice_test.window.lift()
+            return
+        if self.in_combo.current()<0 or self.monitor_combo.current()<0:
+            self._status('Choose a microphone and headphones in Audio setup before testing.',True)
+            return
+        if self.engine.is_running:
+            self._toggle_stream()
+        from voice_test import VoiceTestWindow
+        builders={name:preset['builder'] for name,preset in self.all_presets.items()}
+        pitch,reverb,dist,bits=self.pitch_scale.get(),self.reverb_scale.get(),self.dist_scale.get(),self.bit_scale.get()
+        extras=self._extra_values()
+        base=self._editor_base_voice
+        builders['Current editor']=lambda:create_custom_voice(pitch,reverb,dist,bits,base_voice=base,**extras)
+        selected=self.selected_preset_name if self.selected_preset_name in builders else 'Current editor'
+        self._voice_test=VoiceTestWindow(self,builders,selected,
+            self.device_inputs[self.in_combo.current()]['index'],self.device_outputs[self.monitor_combo.current()]['index'])
+        self._status('Live output paused for local comparison. Close the test window before restarting.')
+
     def _toggle_stream(self):
+        if self._voice_test is not None and not self._voice_test.closed and not self.engine.is_running:
+            self._status('Close Record and compare before restarting live audio.',True)
+            return
         if self.engine.is_running:
             self.engine.stop()
         else:
@@ -684,6 +713,8 @@ class VoiceModApp:
         self._meter_job = self.root.after(50, self._update_meter)
 
     def on_closing(self):
+        if self._voice_test is not None and not self._voice_test.closed:
+            self._voice_test.close()
         self._save_audio_settings()
         if self._hotkey:
             self._hotkey.close()

@@ -118,7 +118,7 @@ class Resonator(StreamingEffect):
         self.board.reset()
 
     def __call__(self,audio,sample_rate,**kwargs):
-        wet=self.board(audio,sample_rate,reset=False)*(1-self.decay)
+        wet=self.board(audio,sample_rate,reset=False)*np.sqrt(1-self.decay**2)
         return ((1-self.mix)*audio+self.mix*wet).astype(np.float32)
 
 
@@ -147,4 +147,54 @@ class ParallelDistortion(StreamingEffect):
     def __call__(self,audio,sample_rate,**kwargs):
         gain=10**(self.drive_db/20)
         wet=np.tanh(audio*gain)/np.sqrt(gain)
+        return ((1-self.mix)*audio+self.mix*wet).astype(np.float32)
+
+class CommunicationChannel(StreamingEffect):
+    """Handset/radio coloration; radio squelch uses hysteresis and a release hold."""
+    def __init__(self,mode=1,drive=3,static=0,click=0,mix=1,gate_db=-44):
+        from pedalboard import Pedalboard,HighpassFilter,LowpassFilter,PeakFilter,Compressor,Gain
+        self.mode,self.drive,self.static,self.click,self.mix=int(mode),drive,static,click,mix
+        self.gate_db=gate_db
+        radio=self.mode==2
+        low,high=(380,2900) if radio else (300,3400)
+        self.board=Pedalboard([HighpassFilter(cutoff_frequency_hz=low),HighpassFilter(cutoff_frequency_hz=low),
+            LowpassFilter(cutoff_frequency_hz=high),LowpassFilter(cutoff_frequency_hz=high),
+            PeakFilter(cutoff_frequency_hz=1450 if radio else 1800,gain_db=3 if radio else 2),
+            Compressor(threshold_db=-28 if radio else -24,ratio=6 if radio else 3.5,attack_ms=3,release_ms=90),
+            Gain(gain_db=5 if radio else 3)])
+        self.reset()
+
+    def reset(self):
+        self.board.reset()
+        self.hold=0
+        self.gain=0.
+        self.open=False
+        self.click_remaining=0
+        self.rng=np.random.default_rng(42)
+
+    def __call__(self,audio,sample_rate,**kwargs):
+        wet=self.board(audio,sample_rate,reset=False)
+        gain=10**(self.drive/20)
+        wet=np.tanh(wet*gain)/gain  # Saturation without arbitrary drive-dependent makeup gain.
+        if self.mode==2:
+            frames=audio.shape[1]
+            rms=float(np.max(np.sqrt(np.mean(audio**2,axis=1))))
+            if rms > (10**((self.gate_db-6)/20) if self.open else 10**(self.gate_db/20)):
+                self.hold=int(sample_rate*.16)
+                self.open=True
+            else:
+                self.hold=max(0,self.hold-frames)
+                if self.hold==0 and self.open:
+                    self.open=False
+                    self.click_remaining=int(sample_rate*.012)
+            target=1. if self.open else 0.
+            ramp=np.clip(self.gain+(target-self.gain)*np.arange(1,frames+1)/max(1,int(sample_rate*.012)),0,1)
+            self.gain=float(ramp[-1])
+            wet*=ramp
+            if self.static:
+                wet+=self.rng.normal(0,.006*self.static,wet.shape).astype(np.float32)*ramp
+            if self.click and self.click_remaining:
+                count=min(frames,self.click_remaining)
+                wet[:,:count]+=self.rng.normal(0,.045*self.click,(audio.shape[0],count)).astype(np.float32)*np.linspace(1,0,count)
+                self.click_remaining-=count
         return ((1-self.mix)*audio+self.mix*wet).astype(np.float32)

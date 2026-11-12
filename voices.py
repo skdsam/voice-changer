@@ -27,7 +27,7 @@ from pedalboard import (
 )
 
 from streaming_dsp import VoiceChain
-from voice_effects import FormantShift, RingModulation, Harmony, Resonator, ToneDelay, ParallelDistortion
+from voice_effects import FormantShift, RingModulation, Harmony, Resonator, ToneDelay, ParallelDistortion, CommunicationChannel
 
 
 def Pedalboard(effects):
@@ -85,20 +85,11 @@ def create_robot_voice():
 
 
 def create_radio_walkie_talkie():
-    return speech_chain([
-        HighpassFilter(cutoff_frequency_hz=320),
-        LowpassFilter(cutoff_frequency_hz=3800),
-        Distortion(drive_db=2), Gain(gain_db=-2),
-        PeakFilter(cutoff_frequency_hz=1800, gain_db=2),
-    ])
+    return speech_chain([CommunicationChannel(mode=2,drive=5,static=0,click=0)])
 
 
 def create_telephone_voice():
-    return speech_chain([
-        HighpassFilter(cutoff_frequency_hz=300),
-        LowpassFilter(cutoff_frequency_hz=3400),
-        PeakFilter(cutoff_frequency_hz=1600, gain_db=2),
-    ])
+    return speech_chain([CommunicationChannel(mode=1,drive=2)])
 
 
 def create_astronaut_voice():
@@ -155,6 +146,14 @@ EXTRA_LIMITS.update(harmony_enabled=(0,1), harmony_pitch1=(-12,12), harmony_leve
     parallel_enabled=(0,1), parallel_drive=(0,30), parallel_mix=(0,1))
 
 
+EXTRA_DEFAULTS.update(comms_enabled=1.,comms_mode=0.,comms_drive=3.,comms_static=0.,comms_click=0.,comms_mix=1.,comms_gate=-44.)
+EXTRA_LIMITS.update(comms_enabled=(0,1),comms_mode=(0,2),comms_drive=(0,18),comms_static=(0,1),comms_click=(0,1),comms_mix=(0,1),comms_gate=(-70,-30))
+
+
+def _communication(params):
+    return CommunicationChannel(int(params['comms_mode']),params['comms_drive'],params['comms_static'],params['comms_click'],params['comms_mix'],params['comms_gate'])
+
+
 def create_custom_voice(pitch_semitones=0., reverb_amount=0., distortion_db=0., bitcrush_bits=16, base_voice=None, **extras):
     params = validate_params(pitch_semitones, distortion_db, reverb_amount, bitcrush_bits, base_voice=base_voice, **extras)
     effects = []
@@ -177,6 +176,8 @@ def create_custom_voice(pitch_semitones=0., reverb_amount=0., distortion_db=0., 
                         Gain(gain_db=-min(12, params['distortion'] * .5))])
     if params['bitcrush'] < 16:
         effects.append(Bitcrush(bit_depth=params['bitcrush']))
+    if params['comms_enabled'] and params['comms_mode'] and params['comms_mix']:
+        effects.append(_communication(params))
     if params['parallel_enabled'] and params['parallel_mix'] > 0:
         effects.append(ParallelDistortion(params['parallel_drive'],params['parallel_mix']))
     if params['harmony_enabled'] and params['harmony_mix'] > 0 and (params['harmony_level1']+params['harmony_level2']) > 0:
@@ -199,6 +200,11 @@ def create_custom_voice(pitch_semitones=0., reverb_amount=0., distortion_db=0., 
         retained = []
         handled = set()
         for effect in base.effects:
+            if isinstance(effect,CommunicationChannel):
+                handled.add('comms')
+                if params['comms_enabled'] and params['comms_mode'] and params['comms_mix']:
+                    retained.append(_communication(params))
+                continue
             for kind, (key, attribute) in replacements.items():
                 if isinstance(effect, kind):
                     handled.add(key)
@@ -209,6 +215,8 @@ def create_custom_voice(pitch_semitones=0., reverb_amount=0., distortion_db=0., 
         # Existing modules are edited in place; unexposed filters stay intact.
         additions = []
         for effect in effects:
+            if isinstance(effect,CommunicationChannel) and 'comms' in handled:
+                continue
             key = next((key for kind, (key, _) in replacements.items() if isinstance(effect, kind)), None)
             if key in handled:
                 continue
@@ -224,7 +232,10 @@ def builtin_editor_params(name):
         return dict(VOICE_PRESETS[name]['params'])
     params = dict(pitch=0., distortion=0., reverb=0., bitcrush=16, **EXTRA_DEFAULTS)
     for effect in VOICE_PRESETS[name]['builder']().effects:
-        if isinstance(effect, NativePitchShift):
+        if isinstance(effect,CommunicationChannel):
+            params.update(comms_mode=effect.mode,comms_drive=effect.drive,comms_static=effect.static,
+                          comms_click=effect.click,comms_mix=effect.mix,comms_gate=effect.gate_db)
+        elif isinstance(effect, NativePitchShift):
             params['pitch'] = round(effect.semitones*2)/2
         elif isinstance(effect, Distortion):
             params['distortion'] = round(effect.drive_db)
@@ -276,12 +287,12 @@ VOICE_PRESETS = {
         "category": "Sci-Fi"
     },
     "Walkie-Talkie": {
-        "description": "Analog two-way radio with bandpass filter & crunch",
+        "description": "Compressed radio channel with speech-triggered squelch",
         "builder": create_radio_walkie_talkie,
         "category": "Filters"
     },
     "Telephone": {
-        "description": "Clear narrow-band telephone voice",
+        "description": "Handset resonance, narrow bandwidth and controlled saturation",
         "builder": create_telephone_voice,
         "category": "Filters"
     },
@@ -336,6 +347,8 @@ def validate_params(pitch, distortion, reverb, bitcrush, base_voice=None, **extr
             raise ValueError(f"{key} must be between {low} and {high}.")
         if key.endswith('_enabled') and value not in (0.,1.):
             raise ValueError(f'{key} must be on or off.')
+        if key == 'comms_mode' and not value.is_integer():
+            raise ValueError('Channel type must be Off, Telephone or Radio.')
         result[key] = value
     if base_voice is not None and (not isinstance(base_voice, str) or base_voice not in VOICE_PRESETS):
         raise ValueError('The original built-in voice is unavailable.')
@@ -355,6 +368,10 @@ _register_character('Goblin','Small nasal character with a restrained raspy edge
 _register_character('Hive Mind','A lead voice surrounded by two pitched companions',
     harmony_pitch1=-7,harmony_level1=.55,harmony_pitch2=7,harmony_level2=.45,
     harmony_mix=.65,doubler_mix=.12,reverb=.2)
+
+
+_register_character('Kid (DSP prototype)','Youthful pitch/resonance experiment; realism not validated',
+    pitch=3.5,formant=2.5,warmth=-3,presence=1,brightness=1)
 
 
 def _read_presets():
@@ -392,6 +409,9 @@ def load_user_presets():
         try:
             if not name.strip() or name in VOICE_PRESETS:
                 continue
+            if isinstance(params,dict) and 'comms_mode' not in params and params.get('base_voice') in ('Telephone','Walkie-Talkie'):
+                inherited=builtin_editor_params(params['base_voice'])
+                params={**params,**{key:inherited[key] for key in EXTRA_DEFAULTS if key.startswith('comms_')}}
             params = validate_params(params.get("pitch", 0), params.get("distortion", 0),
                                      params.get("reverb", 0), params.get("bitcrush", 16), base_voice=params.get('base_voice'),
                                      **{k: params[k] for k in EXTRA_DEFAULTS if k in params})

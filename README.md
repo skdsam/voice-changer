@@ -36,7 +36,7 @@ Voicemod virtual outputs are also detected. One installation's `Dummy Output (Vo
 
 ## Voices and custom effects
 
-18 built-in presets include Clean, Broadcast, Warm Low, Bright, Deep, Monster, Chipmunk, Cyborg, Walkie-Talkie, Telephone, Astronaut, 8-Bit, Cathedral, Alien, Space Marine, Ghost, Goblin and Hive Mind.
+19 built-in presets include Clean, Broadcast, Warm Low, Bright, Deep, Monster, Chipmunk, Cyborg, Walkie-Talkie, Telephone, Astronaut, 8-Bit, Cathedral, Alien, Space Marine, Ghost, Goblin, Hive Mind and Kid (DSP prototype).
 
 The custom editor provides pitch, approximate formant shifting, warmth/presence/brightness EQ, doubler, ring modulation, distortion, bit depth and reverb. Blend controls let you reduce the stronger effects. Select a voice and click **Edit this voice** to copy its primary settings into the editor. Built-in variations preserve the original filters, including filters without dedicated sliders. Adjust controls and save under a new name. Changing a primary control replaces that part of the copied chain; it does not stack an extra pitch shifter on top.
 
@@ -56,7 +56,7 @@ Headphone monitoring has a separate stream, supported-rate negotiation and bound
 .\.venv\Scripts\python.exe -m unittest -v test_presets test_voice_effects test_monitoring test_voice_editing
 ```
 
-29 tests cover preset streaming, pitch accuracy, formant behavior, ring-modulation sidebands, effect order, settings compatibility, monitoring isolation, sample-rate fallback and resampling continuity. Hardware startup is mocked in the suite.
+38 tests cover preset streaming, pitch accuracy, formant behavior, ring-modulation sidebands, effect order, settings compatibility, monitoring isolation, sample-rate fallback and resampling continuity. Hardware startup is mocked in the suite.
 
 ## Listening comparisons
 
@@ -120,3 +120,31 @@ Forced termination cannot run normal restoration; if Voicemod remains muted afte
 For a recording test, select Microphone (Voicemod) in Windows Sound Recorder, start Voice Studio with Deep (Vader), and leave Hear myself unticked. Record a short phrase, stop recording, then play it back. The saved recording should contain the transformed voice, not a separate original-mic overlay. Harmony, doubler and delay presets deliberately contain layers, so Deep is a clearer isolation test.
 
 29 automated tests pass, including no raw input added to processed output, targeted competing-session muting, restoration, and failed-start cleanup. On the implementation machine, the live headset-to-virtual stream started with both competing Voicemod render feeds muted, then restored their original mute states on Stop. A synthetic 220-to-110 Hz pitch probe through the virtual device had the original frequency around 40 dB below the transformed frequency; this probe is not a substitute for listening to a speech recording.
+
+## Rebuilt telephone and radio / local comparison
+
+Telephone now uses cascaded band edges, handset resonance, speech compression and controlled saturation. Walkie-Talkie has distinct radio compression and bandwidth plus speech-triggered squelch. In Create a voice, expand Communications to choose Off / Telephone / Radio, adjust drive and gate threshold, or add optional static and end clicks. Texture defaults to off. Edit this voice recalls the complete communications settings; older saved variations inherit the correct channel type.
+
+Click **Test voice** to pause live output and open a local comparison window:
+
+1. Record up to eight seconds from the selected physical microphone; Stop recording ends it early.
+2. Choose a preset to process the same sample again without rerecording.
+3. Play original and Play processed use the selected headphones, active-speech RMS matching, algorithmic latency compensation and peak protection.
+4. Export pair optionally saves original.wav and processed.wav to a folder you select. Both exports have matched levels; the original is not an untouched raw archival capture.
+
+Audio stays in memory unless exported and is discarded when the test window closes. Playback is local; the live stream cannot restart while testing. The app does not restart live output automatically after closing the test. The comparison includes a two-second tail, so very long echo/reverb tails may be truncated. Level matching is RMS-based, not LUFS.
+
+Kid (DSP prototype) is a youthful pitch/formant experiment, not an established realistic child voice. A suitable neural model has not been selected or integrated. The [child-voice evaluation](docs/CHILD_VOICE_EVALUATION.md) records that open milestone rather than implying realism has been achieved.
+
+## Effect audit
+
+See the [effect-by-effect audit and quality plan](docs/AUDIO_EFFECTS_AUDIT.md) and [automated measurements](docs/AUTOMATED_AUDIT.md). The final offline run covered 140 combinations of presets and individual/stacked stress effects, with no errors, sanitized invalid samples, clipped output samples or native pitch-buffer underruns. Resonator normalization was improved to retain usable level at high decay. These are engineering checks, not a guarantee of subjective quality.
+
+Reproduce the audit without recording a microphone:
+
+```powershell
+python audit_audio.py --report-dir audit-results
+python -m unittest discover -v
+```
+
+The full suite has 38 tests. Record a real speech sample with the Stealth headset to provide the missing perceptual listening signoff.

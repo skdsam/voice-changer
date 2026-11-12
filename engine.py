@@ -49,6 +49,8 @@ class AudioEngine:
 
         # Audio metering for UI
         self.current_rms_level = 0.0
+        self.pre_limiter_peak = 0.0
+        self.invalid_sample_count = 0
 
         # Devices
         self.last_error = None
@@ -272,7 +274,9 @@ class AudioEngine:
             if self.output_gain != 1.0:
                 final_audio = final_audio * self.output_gain
 
+            self.pre_limiter_peak = float(np.max(np.abs(final_audio))) if final_audio.size else 0.0
             final_audio = self._limiter(final_audio, self.sample_rate, reset=False)
+            self.invalid_sample_count += int(np.count_nonzero(~np.isfinite(final_audio)))
             np.nan_to_num(final_audio, copy=False, nan=0.0, posinf=0.0, neginf=0.0)
             # Final safety ceiling after the limiter.
             np.clip(final_audio, -1.0, 1.0, out=final_audio)

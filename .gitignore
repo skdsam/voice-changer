@@ -15,3 +15,7 @@ skills-lock.json
 .publish-repo/
 
 .diagnostics/
+
+audit-results/
+/original.wav
+/processed.wav
