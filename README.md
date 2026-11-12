@@ -38,7 +38,7 @@ Voicemod virtual outputs are also detected. One installation's `Dummy Output (Vo
 
 14 built-in presets include Clean, Broadcast, Warm Low, Bright, Deep, Monster, Chipmunk, Cyborg, Walkie-Talkie, Telephone, Astronaut, 8-Bit, Cathedral and Alien.
 
-The custom editor provides pitch, approximate formant shifting, warmth/presence/brightness EQ, doubler, ring modulation, distortion, bit depth and reverb. Blend controls let you reduce the stronger effects. Custom controls create a new chain rather than editing a built-in preset's internal chain.
+The custom editor provides pitch, approximate formant shifting, warmth/presence/brightness EQ, doubler, ring modulation, distortion, bit depth and reverb. Blend controls let you reduce the stronger effects. Select a voice and click **Edit this voice** to copy its primary settings into the editor. Built-in variations preserve the original filters, including filters without dedicated sliders. Adjust controls and save under a new name. Changing a primary control replaces that part of the copied chain; it does not stack an extra pitch shifter on top.
 
 Save named custom voices to the library. Settings are validated and saved atomically to `custom_presets.json`. Older presets load neutral defaults for newer effects. Custom voices and `audio_settings.json` are local and ignored by Git.
 
@@ -53,10 +53,10 @@ Headphone monitoring has a separate stream, supported-rate negotiation and bound
 ## Tests
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest -v test_presets test_voice_effects test_monitoring
+.\.venv\Scripts\python.exe -m unittest -v test_presets test_voice_effects test_monitoring test_voice_editing
 ```
 
-17 tests cover preset streaming, pitch accuracy, formant behavior, ring-modulation sidebands, effect order, settings compatibility, monitoring isolation, sample-rate fallback and resampling continuity. Hardware startup is mocked in the suite.
+20 tests cover preset streaming, pitch accuracy, formant behavior, ring-modulation sidebands, effect order, settings compatibility, monitoring isolation, sample-rate fallback and resampling continuity. Hardware startup is mocked in the suite.
 
 ## Listening comparisons
 
@@ -69,3 +69,13 @@ Processes the same recording through each built-in preset using the live callbac
 ## Third-party components
 
 See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The unmodified SoundTouch 2.3.3 x64 DLL, license, C API header, provenance and upstream source archive are included in `vendor/soundtouch`.
+
+## Global Start/Stop shortcut
+
+The bottom control defaults to **Ctrl+Alt+V**. It starts or stops the audio stream, including while the window is minimized or another app has focus. The selector also offers Ctrl+Alt+F8, F8, F9, F10 and Disabled. The selected key is remembered in local audio settings. Holding a key does not repeatedly toggle the stream.
+
+If another app owns the combination, registration reports a conflict. A previously active shortcut stays registered when a replacement fails. Closing Voice Studio releases the shortcut. The shortcut uses Windows RegisterHotKey; it does not record general keyboard input.
+
+**Stop** stops sending audio to the virtual microphone; it is not a clean-voice bypass. **Hear myself** remains independent.
+
+Tests verify that recalling all built-ins without edits produces the original audio, primary pitch edits retain the remaining effects, and saved variations retain their built-in base. Existing custom voices without a built-in base remain supported.

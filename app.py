@@ -1,4 +1,5 @@
 ﻿"""Voice Studio desktop interface. Run with python app.py."""
+import queue
 import math
 import json
 import os
@@ -6,7 +7,8 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 from engine import AudioEngine
-from voices import VOICE_PRESETS, create_custom_voice, load_user_presets, save_user_preset, delete_user_preset, EXTRA_DEFAULTS, EXTRA_LIMITS
+from hotkeys import GlobalHotkey, HOTKEYS
+from voices import VOICE_PRESETS, create_custom_voice, load_user_presets, save_user_preset, delete_user_preset, EXTRA_DEFAULTS, EXTRA_LIMITS, builtin_editor_params
 
 
 class VoiceModApp:
@@ -22,6 +24,9 @@ class VoiceModApp:
         root.option_add('*Font', ('Segoe UI', 10))
         self.engine = AudioEngine(sample_rate=44100, blocksize=512)
         self.selected_preset_name = 'Clean (Normal)'
+        self._editor_base_voice = None
+        self._hotkey = None
+        self._hotkey_job = None
         self._slider_job = None
         self._syncing = True
         self._meter_job = None
@@ -46,6 +51,8 @@ class VoiceModApp:
         root.bind('<Control-f>', lambda _: self.search_entry.focus_set())
         root.protocol('WM_DELETE_WINDOW', self.on_closing)
         self._update_meter()
+        self._apply_hotkey(save=False)
+        self._poll_hotkey()
 
     def _styles(self):
         style = ttk.Style()
@@ -135,6 +142,18 @@ class VoiceModApp:
         self.route_label.pack(fill='x', pady=(10, 0))
         self.status_lbl = self._label(panel, 'Ready. Choose a voice, then start.', 9, 'muted', anchor='w')
         self.status_lbl.pack(fill='x', pady=(12, 0))
+        shortcut = tk.Frame(panel, bg=self.c['panel'])
+        shortcut.pack(fill='x', pady=(12, 0))
+        self._label(shortcut, 'Start / stop shortcut', 9, 'muted').pack(side='left', padx=(0, 12))
+        saved_key = self._saved_audio.get('hotkey', 'Ctrl+Alt+V')
+        self.hotkey_var = tk.StringVar(value=saved_key if saved_key in HOTKEYS or saved_key == 'Disabled' else 'Ctrl+Alt+V')
+        self.hotkey_combo = ttk.Combobox(shortcut, textvariable=self.hotkey_var, state='readonly', width=15,
+                                        values=[*HOTKEYS, 'Disabled'])
+        self.hotkey_combo.pack(side='left')
+        self.hotkey_combo.bind('<<ComboboxSelected>>', lambda _: self._apply_hotkey())
+        self.hotkey_status = self._label(shortcut, '', 9, 'muted', wraplength=480, justify='left')
+        self.hotkey_status.pack(side='left', padx=12)
+
 
     def _workspace(self):
         body = tk.Frame(self.root, bg=self.c['bg'])
@@ -203,7 +222,8 @@ class VoiceModApp:
         self.active_description = self._label(editor, VOICE_PRESETS[self.selected_preset_name]['description'], 10,
                                                'muted', wraplength=250, justify='left')
         self.active_description.pack(anchor='w')
-        tk.Frame(editor, bg=self.c['border'], height=1).pack(fill='x', pady=20)
+        self._button(editor, 'Edit this voice', self._recall_voice).pack(fill='x', pady=(12, 0))
+        tk.Frame(editor, bg=self.c['border'], height=1).pack(fill='x', pady=16)
         self._label(editor, 'Create a voice', 14, bold=True).pack(anchor='w')
         self._label(editor, 'Move a control to switch to a custom voice.', 9, 'muted',
                     wraplength=250, justify='left').pack(anchor='w', pady=(4, 14))
@@ -305,6 +325,7 @@ class VoiceModApp:
         self.selected_preset_name = name
         self.active_name.configure(text=name)
         self.active_description.configure(text=preset['description'])
+        self._editor_base_voice = preset.get('params', {}).get('base_voice')
         if 'params' in preset:
             self._syncing = True
             for attr, key in (('pitch', 'pitch'), ('dist', 'distortion'), ('reverb', 'reverb'), ('bit', 'bitcrush')):
@@ -316,6 +337,69 @@ class VoiceModApp:
             self._readouts()
         self._render_presets_grid()
         self._status(f'Voice selected: {name}')
+
+    def _load_editor_params(self, params):
+        if self._slider_job:
+            self.root.after_cancel(self._slider_job)
+            self._slider_job = None
+        self._syncing = True
+        try:
+            for attr, key in (('pitch','pitch'),('dist','distortion'),('reverb','reverb'),('bit','bitcrush')):
+                getattr(self, attr+'_scale').set(params[key])
+            for key, scale in self.extra_scales.items():
+                scale.set(params.get(key, EXTRA_DEFAULTS[key]))
+            self.root.update()
+        finally:
+            self._syncing = False
+        self._editor_base_voice = params.get('base_voice')
+        self._readouts()
+
+    def _recall_voice(self):
+        preset = self.all_presets.get(self.selected_preset_name)
+        if preset is None:
+            self._status('The current custom voice is already in the editor.')
+            self.editor_canvas.yview_moveto(0)
+            return
+        name = self.selected_preset_name
+        params = dict(preset['params']) if 'params' in preset else builtin_editor_params(name)
+        self._load_editor_params(params)
+        self.editor_canvas.yview_moveto(0)
+        self._status(f'Loaded {name} into Create a voice. Original filters are retained; save a new name for a variation.')
+
+    def _apply_hotkey(self, save=True):
+        name = self.hotkey_var.get()
+        if name == 'Disabled':
+            if self._hotkey:
+                self._hotkey.close()
+                self._hotkey = None
+            self.hotkey_status.configure(text='Shortcut disabled.', fg=self.c['muted'])
+        elif self._hotkey and self._hotkey.name == name:
+            return
+        else:
+            try:
+                replacement = GlobalHotkey(name)
+            except Exception as exc:
+                active = f' Still active: {self._hotkey.name}.' if self._hotkey else ''
+                self.hotkey_status.configure(text=str(exc)+active, fg=self.c['danger'])
+                if self._hotkey:
+                    self.hotkey_var.set(self._hotkey.name)
+                return
+            if self._hotkey:
+                self._hotkey.close()
+            self._hotkey = replacement
+            self.hotkey_status.configure(text='Global shortcut active, including when minimized.', fg=self.c['muted'])
+        if save:
+            self._save_audio_settings()
+
+    def _poll_hotkey(self):
+        if self._hotkey:
+            try:
+                while True:
+                    self._hotkey.events.get_nowait()
+                    self._toggle_stream()
+            except queue.Empty:
+                pass
+        self._hotkey_job = self.root.after(60, self._poll_hotkey)
 
     @staticmethod
     def _format_extra(value, unit):
@@ -346,7 +430,7 @@ class VoiceModApp:
         self._slider_job = None
         try:
             board = create_custom_voice(self.pitch_scale.get(), self.reverb_scale.get(),
-                                        self.dist_scale.get(), self.bit_scale.get(), **self._extra_values())
+                                        self.dist_scale.get(), self.bit_scale.get(), base_voice=self._editor_base_voice, **self._extra_values())
             self.engine.set_voice(board)
             self.selected_preset_name = 'Custom voice'
             self.active_name.configure(text='Custom voice')
@@ -357,6 +441,7 @@ class VoiceModApp:
             self._status(f'Cannot apply controls: {exc}', True)
 
     def _reset_controls(self):
+        self._editor_base_voice = None
         self._syncing = True
         for attr, value in (('pitch', 0), ('dist', 0), ('reverb', 0), ('bit', 16)):
             getattr(self, attr+'_scale').set(value)
@@ -375,7 +460,7 @@ class VoiceModApp:
         if name in self.user_presets and not messagebox.askyesno('Replace voice', f'Replace "{name}"?', parent=self.root):
             return
         try:
-            save_user_preset(name, self.pitch_scale.get(), self.dist_scale.get(), self.reverb_scale.get(), self.bit_scale.get(), **self._extra_values())
+            save_user_preset(name, self.pitch_scale.get(), self.dist_scale.get(), self.reverb_scale.get(), self.bit_scale.get(), base_voice=self._editor_base_voice, **self._extra_values())
             self.category.set('All voices')
             self.search.set('')
             self._activate_preset(name, load_user_presets()[name])
@@ -405,6 +490,7 @@ class VoiceModApp:
     def _save_audio_settings(self):
         data = {key: combo.get().split('] ', 1)[-1] for key, combo in
                 (('mic', self.in_combo), ('output', self.out_combo), ('monitor', self.monitor_combo))}
+        data['hotkey'] = self.hotkey_var.get()
         try:
             temporary = self._audio_settings_path.with_suffix('.tmp')
             temporary.write_text(json.dumps(data, indent=2), encoding='utf-8')
@@ -542,7 +628,9 @@ class VoiceModApp:
 
     def on_closing(self):
         self._save_audio_settings()
-        for job in (self._slider_job, self._meter_job):
+        if self._hotkey:
+            self._hotkey.close()
+        for job in (self._slider_job, self._meter_job, self._hotkey_job):
             if job:
                 self.root.after_cancel(job)
         self.engine.stop()

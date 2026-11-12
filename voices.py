@@ -143,8 +143,8 @@ EXTRA_LIMITS = dict(formant=(-6, 6), formant_mix=(0, 1), warmth=(-9, 9), presenc
                     brightness=(-9, 9), tone_mix=(0, 1), doubler_mix=(0, 1), ring_hz=(20, 500), ring_mix=(0, 1))
 
 
-def create_custom_voice(pitch_semitones=0., reverb_amount=0., distortion_db=0., bitcrush_bits=16, **extras):
-    params = validate_params(pitch_semitones, distortion_db, reverb_amount, bitcrush_bits, **extras)
+def create_custom_voice(pitch_semitones=0., reverb_amount=0., distortion_db=0., bitcrush_bits=16, base_voice=None, **extras):
+    params = validate_params(pitch_semitones, distortion_db, reverb_amount, bitcrush_bits, base_voice=base_voice, **extras)
     effects = []
     if abs(params['pitch']) > .05:
         effects.append(PitchShift(semitones=params['pitch']))
@@ -168,7 +168,47 @@ def create_custom_voice(pitch_semitones=0., reverb_amount=0., distortion_db=0., 
     if params['reverb'] > .01:
         effects.append(Reverb(room_size=.25 + params['reverb'] * .55,
                               damping=.6, wet_level=params['reverb'] * .3, dry_level=.95))
+    if base_voice:
+        base = VOICE_PRESETS[base_voice]['builder']()
+        defaults = builtin_editor_params(base_voice)
+        replacements = {NativePitchShift: ('pitch', 'semitones'), Distortion: ('distortion', 'drive_db'),
+                        Bitcrush: ('bitcrush', 'bit_depth'), Reverb: ('reverb', 'wet_level')}
+        retained = []
+        handled = set()
+        for effect in base.effects:
+            for kind, (key, attribute) in replacements.items():
+                if isinstance(effect, kind):
+                    handled.add(key)
+                    if abs(params[key]-defaults[key]) > 1e-6:
+                        setattr(effect, attribute, params[key]*.3 if key == 'reverb' else params[key])
+                    break
+            retained.append(effect)
+        # Existing modules are edited in place; unexposed filters stay intact.
+        additions = []
+        for effect in effects:
+            key = next((key for kind, (key, _) in replacements.items() if isinstance(effect, kind)), None)
+            if key in handled:
+                continue
+            if isinstance(effect, Gain) and 'distortion' in handled:
+                continue
+            additions.append(effect)
+        return Pedalboard([*retained, *additions])
     return speech_chain(effects)
+
+
+def builtin_editor_params(name):
+    params = dict(pitch=0., distortion=0., reverb=0., bitcrush=16, **EXTRA_DEFAULTS)
+    for effect in VOICE_PRESETS[name]['builder']().effects:
+        if isinstance(effect, NativePitchShift):
+            params['pitch'] = round(effect.semitones*2)/2
+        elif isinstance(effect, Distortion):
+            params['distortion'] = round(effect.drive_db)
+        elif isinstance(effect, Bitcrush):
+            params['bitcrush'] = int(effect.bit_depth)
+        elif isinstance(effect, Reverb):
+            params['reverb'] = min(1., round(effect.wet_level/.3/.05)*.05)
+    params['base_voice'] = name
+    return params
 
 
 # Registry of predefined voices available in the application
@@ -243,7 +283,7 @@ VOICE_PRESETS = {
 }
 
 
-def validate_params(pitch, distortion, reverb, bitcrush, **extras):
+def validate_params(pitch, distortion, reverb, bitcrush, base_voice=None, **extras):
     values = (float(pitch), float(distortion), float(reverb), float(bitcrush))
     for value, low, high, label in zip(values, (-12, 0, 0, 4), (12, 25, 1, 16),
                                         ("Pitch", "Distortion", "Reverb", "Bit depth")):
@@ -261,6 +301,9 @@ def validate_params(pitch, distortion, reverb, bitcrush, **extras):
         if not math.isfinite(value) or not low <= value <= high:
             raise ValueError(f"{key} must be between {low} and {high}.")
         result[key] = value
+    if base_voice is not None and (not isinstance(base_voice, str) or base_voice not in VOICE_PRESETS):
+        raise ValueError('The original built-in voice is unavailable.')
+    result['base_voice'] = base_voice
     return result
 
 
@@ -300,13 +343,13 @@ def load_user_presets():
             if not name.strip() or name in VOICE_PRESETS:
                 continue
             params = validate_params(params.get("pitch", 0), params.get("distortion", 0),
-                                     params.get("reverb", 0), params.get("bitcrush", 16),
+                                     params.get("reverb", 0), params.get("bitcrush", 16), base_voice=params.get('base_voice'),
                                      **{k: params[k] for k in EXTRA_DEFAULTS if k in params})
             p, d, r, b = (params[k] for k in ("pitch", "distortion", "reverb", "bitcrush"))
             presets[name] = {
                 "description": f"Custom (Pitch {p:+.1f}, Dist {d}dB, Rev {int(r*100)}%)",
                 "builder": lambda params=params: create_custom_voice(params['pitch'], params['reverb'],
-                    params['distortion'], params['bitcrush'], **{k: params[k] for k in EXTRA_DEFAULTS}),
+                    params['distortion'], params['bitcrush'], base_voice=params.get('base_voice'), **{k: params[k] for k in EXTRA_DEFAULTS}),
                 "params": params, "category": "Custom"
             }
         except (TypeError, ValueError, AttributeError):
@@ -314,11 +357,11 @@ def load_user_presets():
     return presets
 
 
-def save_user_preset(name, pitch, distortion, reverb, bitcrush=16, **extras):
+def save_user_preset(name, pitch, distortion, reverb, bitcrush=16, base_voice=None, **extras):
     name = name.strip()
     if not name or len(name) > 80 or name in VOICE_PRESETS:
         raise ValueError("Use a unique voice name of 1 to 80 characters, different from built-in voices.")
-    params = validate_params(pitch, distortion, reverb, bitcrush, **extras)
+    params = validate_params(pitch, distortion, reverb, bitcrush, base_voice=base_voice, **extras)
     current = _read_presets()
     current[name] = params
     _write_presets(current)
