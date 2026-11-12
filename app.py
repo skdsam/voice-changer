@@ -31,30 +31,61 @@ from voices import (
 CATEGORY_LIST = ['All voices', 'Natural', 'Basic', 'Characters', 'Sci-Fi', 'Filters', 'Atmosphere', 'Custom']
 
 
+class StudioScale(ttk.Scale):
+    """Native keyboard-operable slider retaining the editor's discrete steps."""
+    def __init__(self, parent, low, high, step, command, **kwargs):
+        self.step = step
+        super().__init__(parent, from_=low, to=high, orient='horizontal',
+                         style='Studio.Horizontal.TScale',
+                         command=lambda value: command(str(self._quantize(float(value)))), **kwargs)
+        for key, delta in (('<Left>', -step), ('<Down>', -step), ('<Right>', step), ('<Up>', step)):
+            self.bind(key, lambda event, amount=delta: self._move(amount))
+        self.bind('<Home>', lambda event: self._jump(low))
+        self.bind('<End>', lambda event: self._jump(high))
+
+    def _move(self, amount):
+        self.set(self.get() + amount)
+        return 'break'
+
+    def _jump(self, value):
+        self.set(value)
+        return 'break'
+
+    def _quantize(self, value):
+        low, high = float(self.cget('from')), float(self.cget('to'))
+        return max(low, min(high, round(low + round((value-low)/self.step)*self.step, 6)))
+
+    def get(self):
+        return self._quantize(super().get())
+
+    def set(self, value):
+        super().set(self._quantize(float(value)))
+
+
 class VoiceModApp:
     def __init__(self, root):
         self.root = root
         root.title('Voice Studio')
-        root.geometry('1240x860')
-        root.minsize(1020, 740)
+        root.geometry('1100x790')
+        root.minsize(980, 720)
         self.c = dict(
-            bg='#0D1117',
-            panel='#11161E',
-            card='#141A22',
-            raised='#18202B',
-            border='#222D3C',
-            border_hi='#3A4B63',
-            text='#F1F5F9',
-            muted='#8D9BAE',
-            subtle='#64748B',
-            accent='#4AE3B5',
-            ink='#08221A',
-            selected='#162C27',
-            info='#60A5FA',
-            warn='#FBBF24',
-            warn_bg='#2A2315',
-            danger='#F87171',
-            danger_bg='#291A1E',
+            bg='#F4F4F1',
+            panel='#FFFFFF',
+            card='#FFFFFF',
+            raised='#EAEDE8',
+            border='#CDD3CC',
+            border_hi='#87968A',
+            text='#202522',
+            muted='#536057',
+            subtle='#5E6B61',
+            accent='#245C46',
+            ink='#FFFFFF',
+            selected='#DDEAE0',
+            info='#245C46',
+            warn='#8A5B08',
+            warn_bg='#FFF3D6',
+            danger='#B33434',
+            danger_bg='#FBEAEA',
         )
         root.configure(bg=self.c['bg'])
         root.option_add('*Font', ('Segoe UI', 10))
@@ -122,6 +153,26 @@ class VoiceModApp:
             borderwidth=0,
             arrowsize=11,
         )
+        # Small image elements give the native ttk scale a crisp rail and round thumb.
+        # PhotoImage assets are generated locally and retained for Tk's lifetime.
+        self._slider_thumb = tk.PhotoImage(width=16, height=16)
+        for y in range(16):
+            for x in range(16):
+                if (x-7.5)**2 + (y-7.5)**2 <= 49:
+                    self._slider_thumb.put(self.c['accent'], (x, y))
+        self._slider_rail = tk.PhotoImage(width=3, height=16)
+        self._slider_rail.put(self.c['border'], to=(0, 7, 3, 10))
+        style.element_create('Studio.Scale.slider', 'image', self._slider_thumb)
+        style.element_create('Studio.Scale.trough', 'image', self._slider_rail, border=(1, 7, 1, 6), sticky='we')
+        style.layout('Studio.Horizontal.TScale', [('Studio.Scale.trough', {
+            'sticky': 'we', 'children': [('Studio.Scale.slider', {'side': 'left', 'sticky': ''})]})])
+        style.configure('Studio.Horizontal.TScale', background=self.c['panel'])
+        style.map('Studio.Horizontal.TScale', background=[('focus', self.c['selected'])])
+        style.configure('Studio.TNotebook', background=self.c['panel'], borderwidth=0)
+        style.configure('Studio.TNotebook.Tab', background=self.c['panel'], foreground=self.c['muted'],
+                        padding=(16, 9), font=('Segoe UI', 10))
+        style.map('Studio.TNotebook.Tab', background=[('selected', self.c['selected'])],
+                  foreground=[('selected', self.c['accent'])])
         self.root.option_add('*TCombobox*Listbox.background', self.c['raised'])
         self.root.option_add('*TCombobox*Listbox.foreground', self.c['text'])
         self.root.option_add('*TCombobox*Listbox.selectBackground', self.c['selected'])
@@ -140,7 +191,7 @@ class VoiceModApp:
         if primary:
             bg, fg, border = self.c['accent'], self.c['ink'], self.c['accent']
         elif tone == 'danger':
-            bg, fg, border = self.c['danger_bg'], self.c['danger'], '#3B262B'
+            bg, fg, border = self.c['danger_bg'], self.c['danger'], '#D9AAAA'
         elif tone == 'info':
             bg, fg, border = self.c['raised'], self.c['info'], self.c['border']
         else:
@@ -149,7 +200,7 @@ class VoiceModApp:
             parent,
             text=text,
             command=command,
-            font=('Segoe UI', 9, 'bold' if primary else 'normal'),
+            font=('Segoe UI', 10, 'bold' if primary else 'normal'),
             bg=bg,
             fg=fg,
             activebackground=self.c['accent'],
@@ -159,6 +210,7 @@ class VoiceModApp:
             padx=12,
             pady=7,
             cursor='hand2',
+            takefocus=True,
             highlightthickness=1,
             highlightbackground=border,
             highlightcolor=self.c['accent'],
@@ -166,67 +218,31 @@ class VoiceModApp:
         )
 
     def _header(self):
-        header = tk.Frame(self.root, bg=self.c['panel'], padx=22, pady=12)
+        header = tk.Frame(self.root, bg=self.c['panel'], padx=20, pady=9)
         header.pack(fill='x')
         tk.Frame(self.root, bg=self.c['border'], height=1).pack(fill='x')
-
-        left = tk.Frame(header, bg=self.c['panel'])
-        left.pack(side='left')
-        brand = tk.Canvas(left, width=28, height=28, bg=self.c['panel'], highlightthickness=0)
+        brand = tk.Canvas(header, width=25, height=28, bg=self.c['panel'], highlightthickness=0)
         brand.pack(side='left', padx=(0, 10))
-        for x, height in ((4, 10), (10, 20), (16, 26), (22, 14)):
-            brand.create_line(x, 14 - height / 2, x, 14 + height / 2, fill=self.c['accent'], width=3, capstyle='round')
-        self._label(left, 'Voice Studio', 16, bold=True).pack(side='left', padx=(0, 22))
-
-        tabs_host = tk.Frame(left, bg=self.c['bg'], padx=3, pady=3)
-        tabs_host.pack(side='left')
-        self.tab_voices_btn = tk.Button(
-            tabs_host,
-            text='Voice Changer',
-            command=lambda: self._switch_tab('voices'),
-            font=('Segoe UI', 9, 'bold'),
-            relief='flat',
-            bd=0,
-            padx=12,
-            pady=5,
-            cursor='hand2',
-        )
-        self.tab_voices_btn.pack(side='left', padx=(0, 3))
-        self.tab_soundboard_btn = tk.Button(
-            tabs_host,
-            text='Soundboard & Clips',
-            command=lambda: self._switch_tab('soundboard'),
-            font=('Segoe UI', 9, 'bold'),
-            relief='flat',
-            bd=0,
-            padx=12,
-            pady=5,
-            cursor='hand2',
-        )
+        for x, height in ((3, 10), (9, 20), (15, 26), (21, 14)):
+            brand.create_line(x, 14-height/2, x, 14+height/2, fill=self.c['accent'], width=2, capstyle='round')
+        self._label(header, 'Voice Studio', 15, bold=True).pack(side='left', padx=(0, 26))
+        tabs = tk.Frame(header, bg=self.c['panel'])
+        tabs.pack(side='left')
+        self.tab_voices_btn = self._button(tabs, 'Voice editor', lambda: self._switch_tab('voices'))
+        self.tab_voices_btn.pack(side='left', padx=(0, 5))
+        self.tab_soundboard_btn = self._button(tabs, 'Soundboard', lambda: self._switch_tab('soundboard'))
         self.tab_soundboard_btn.pack(side='left')
-
-        right = tk.Frame(header, bg=self.c['panel'])
-        right.pack(side='right')
-        self.live_badge = self._label(right, '● STOPPED', 9, 'muted', bold=True, padx=11, pady=6)
-        self.live_badge.configure(bg=self.c['raised'])
-        self.live_badge.pack(side='right', padx=(10, 0))
-        self.setup_btn = self._button(right, 'Audio Setup', self._toggle_audio_setup)
-        self.setup_btn.pack(side='right', padx=(8, 0))
-        self._button(right, 'A/B Test', self._open_voice_test).pack(side='right', padx=(8, 0))
-        self._button(right, 'Export / Share', lambda: self._open_share_dialog('export'), tone='info').pack(side='right', padx=(8, 0))
-        self._button(right, 'Import', lambda: self._open_share_dialog('import')).pack(side='right')
+        self.setup_btn = self._button(header, 'Audio setup', self._toggle_audio_setup)
+        self.setup_btn.pack(side='right')
+        self._button(header, 'Share', lambda: self._open_share_dialog('export')).pack(side='right', padx=(0, 8))
         self._style_workspace_tabs()
 
     def _style_workspace_tabs(self):
-        voices_active = self._active_tab == 'voices'
-        self.tab_voices_btn.configure(
-            bg=self.c['raised'] if voices_active else self.c['bg'],
-            fg=self.c['accent'] if voices_active else self.c['muted'],
-        )
-        self.tab_soundboard_btn.configure(
-            bg=self.c['raised'] if not voices_active else self.c['bg'],
-            fg=self.c['accent'] if not voices_active else self.c['muted'],
-        )
+        for name, button in (('voices', self.tab_voices_btn), ('soundboard', self.tab_soundboard_btn)):
+            selected = self._active_tab == name
+            button.configure(bg=self.c['selected'] if selected else self.c['panel'],
+                             fg=self.c['accent'] if selected else self.c['muted'],
+                             highlightbackground=self.c['selected'] if selected else self.c['panel'])
 
     def _switch_tab(self, tab):
         if tab not in ('voices', 'soundboard'):
@@ -234,11 +250,17 @@ class VoiceModApp:
         self._active_tab = tab
         self._style_workspace_tabs()
         if tab == 'voices':
-            self.pills_frame.pack(fill='x', pady=(8, 0))
+            self.editor_host.grid()
+            self.body.columnconfigure(0, weight=0, minsize=250)
+            self.library_host.grid_configure(columnspan=1)
+            self.pills_frame.pack(fill='x', before=self.search_wrap, pady=(0, 10))
             self.soundboard_toolbar.pack_forget()
         else:
+            self.editor_host.grid_remove()
+            self.body.columnconfigure(0, weight=1)
+            self.library_host.grid_configure(columnspan=2)
             self.pills_frame.pack_forget()
-            self.soundboard_toolbar.pack(fill='x', pady=(8, 0))
+            self.soundboard_toolbar.pack(fill='x', before=self.library_scroll, pady=(8, 0))
         self._render_library()
 
     def _audio_panel(self):
@@ -283,8 +305,7 @@ class VoiceModApp:
 
         for text, var, command in (
             ('Hear myself', self.hear_var, self._on_hear_myself_change),
-            ('Clean mic', self.hygiene_var, self._on_hygiene_change),
-            ('Mute mic', self.mute_var, self._on_mute_change),
+                        ('Mute mic', self.mute_var, self._on_mute_change),
         ):
             tk.Checkbutton(
                 controls,
@@ -304,8 +325,8 @@ class VoiceModApp:
                 cursor='hand2',
             ).pack(side='left', padx=(0, 6))
 
-        shortcut_box = tk.Frame(controls, bg=self.c['panel'])
-        shortcut_box.pack(side='left', padx=(12, 0))
+        shortcut_box = tk.Frame(devices, bg=self.c['card'])
+        shortcut_box.grid(row=1, column=0, columnspan=2, sticky='w', pady=(12, 0))
         self._label(shortcut_box, 'Hotkey', 8, 'muted').pack(side='left', padx=(0, 6))
         saved_key = self._saved_audio.get('hotkey', 'Ctrl+Alt+V')
         self.hotkey_var = tk.StringVar(value=saved_key if saved_key in HOTKEYS or saved_key == 'Disabled' else 'Ctrl+Alt+V')
@@ -315,26 +336,17 @@ class VoiceModApp:
         self.hotkey_combo.pack(side='left')
         self.hotkey_combo.bind('<<ComboboxSelected>>', lambda _: self._apply_hotkey())
 
-        # Right side: Output gain & segmented 16-LED mic meter
         right_dock = tk.Frame(controls, bg=self.c['panel'])
-        right_dock.pack(side='right', fill='x', expand=True, padx=(16, 0))
-
-        meter = tk.Frame(right_dock, bg=self.c['panel'])
-        meter.pack(side='right', fill='x', expand=True, padx=(14, 0))
-        meter_head = tk.Frame(meter, bg=self.c['panel'])
-        meter_head.pack(fill='x')
-        self._label(meter_head, 'MIC INPUT', 8, 'muted', True).pack(side='left')
-        self.meter_label = self._label(meter_head, '-- dB', 8, 'accent', True)
-        self.meter_label.pack(side='right')
-        self.meter_canvas = tk.Canvas(meter, height=10, bg=self.c['bg'], highlightthickness=0, width=130)
-        self.meter_canvas.pack(fill='x', pady=(4, 0))
-
-        vol_box = tk.Frame(right_dock, bg=self.c['panel'])
-        vol_box.pack(side='right')
-        self._label(vol_box, 'Out Vol', 8, 'muted').pack(side='left', padx=(0, 6))
-        self.vol_scale = self._scale(vol_box, 0, 2, .05, self._on_vol_change, length=88)
+        right_dock.pack(side='right', padx=(12, 0))
+        self._label(right_dock, 'Output', 10, 'muted').pack(side='left', padx=(0, 8))
+        self.vol_scale = self._scale(right_dock, 0, 2, .05, self._on_vol_change, length=120)
         self.vol_scale.set(1)
         self.vol_scale.pack(side='left')
+
+        tk.Checkbutton(devices, text='Clean microphone', variable=self.hygiene_var,
+                       command=self._on_hygiene_change, bg=self.c['card'], fg=self.c['text'],
+                       selectcolor=self.c['selected'], activebackground=self.c['card']).grid(
+                           row=1, column=2, sticky='w', pady=(12, 0))
 
         # Single compact footer line combining route, status & hotkey hint
         footer = tk.Frame(panel, bg=self.c['panel'])
@@ -344,97 +356,70 @@ class VoiceModApp:
         self.route_label = self._label(footer, '', 8, 'subtle', anchor='e')
         self.route_label.pack(side='right')
         self.hotkey_status = self._label(footer, '', 8, 'subtle')
-        self.hotkey_status.pack(side='right', padx=(0, 14))
+        self.hotkey_status.pack_forget()
 
     def _workspace(self):
-        body = tk.Frame(self.root, bg=self.c['bg'])
-        body.pack(fill='both', expand=True, padx=20, pady=14)
-        body.columnconfigure(0, weight=1)
-        body.columnconfigure(1, minsize=330)
+        self.body = body = tk.Frame(self.root, bg=self.c['border'])
+        body.pack(fill='both', expand=True)
+        body.columnconfigure(0, minsize=250, weight=0)
+        body.columnconfigure(1, weight=1)
         body.rowconfigure(0, weight=1)
-
-        library = tk.Frame(body, bg=self.c['bg'])
-        library.grid(row=0, column=0, sticky='nsew', padx=(0, 18))
-
-        # Top Search + Result Count Row
-        search_bar = tk.Frame(library, bg=self.c['bg'])
-        search_bar.pack(fill='x')
-        search_wrap = tk.Frame(
-            search_bar, bg=self.c['card'], highlightthickness=1, highlightbackground=self.c['border'], padx=10, pady=2
-        )
-        search_wrap.pack(side='left', fill='x', expand=True)
-        self._label(search_wrap, 'Search', 9, 'muted').pack(side='left', padx=(0, 8))
-        self.search_entry = tk.Entry(
-            search_wrap,
-            textvariable=self.search,
-            bg=self.c['card'],
-            fg=self.c['text'],
-            insertbackground=self.c['accent'],
-            relief='flat',
-            bd=0,
-        )
-        self.search_entry.pack(side='left', fill='x', expand=True, ipady=6)
-        self.count_label = self._label(search_bar, '', 9, 'muted')
-        self.count_label.pack(side='right', padx=(12, 0))
-
-        # Pill Filter Bar (Voice Changer mode)
+        self.library_host = library = tk.Frame(body, bg=self.c['bg'], padx=14, pady=16, width=250)
+        library.grid(row=0, column=0, sticky='nsew')
+        library.grid_propagate(False)
         self.pills_frame = tk.Frame(library, bg=self.c['bg'])
-        self.pills_frame.pack(fill='x', pady=(10, 0))
-        for cat in CATEGORY_LIST:
-            short = 'All' if cat == 'All voices' else cat
-            btn = tk.Button(
-                self.pills_frame,
-                text=short,
-                command=lambda c=cat: self._select_category(c),
-                font=('Segoe UI', 9),
-                relief='flat',
-                bd=0,
-                padx=11,
-                pady=4,
-                cursor='hand2',
-                highlightthickness=1,
-            )
-            btn.pack(side='left', padx=(0, 6))
-            self.category_pills[cat] = btn
-        self._style_category_pills()
-
-        # Soundboard Toolbar (hidden unless Soundboard tab active)
-        self.soundboard_toolbar = tk.Frame(
-            library, bg=self.c['card'], padx=12, pady=8, highlightthickness=1, highlightbackground=self.c['border']
-        )
-        self._label(
-            self.soundboard_toolbar,
-            'Trigger WAV / MP3 clips straight into your virtual microphone or preview locally.',
-            9,
-            'muted',
-        ).pack(side='left')
-        self._button(self.soundboard_toolbar, 'Stop Playing', self._stop_soundboard, tone='danger').pack(
-            side='right', padx=(8, 0)
-        )
-        self._button(self.soundboard_toolbar, '+ Import Sound File', self._import_sound_prompt, primary=True).pack(
-            side='right'
-        )
-
-        # Scrollable Card Area
-        scroll = tk.Frame(library, bg=self.c['bg'])
+        self.pills_frame.pack(fill='x', pady=(0, 10))
+        self.library_scope = tk.StringVar(value='Voices')
+        for title in ('Voices', 'Saved'):
+            tk.Radiobutton(self.pills_frame, text=title, variable=self.library_scope, value=title,
+                           indicatoron=False, command=self._render_library, relief='flat', bd=0,
+                           bg=self.c['raised'], fg=self.c['text'], selectcolor=self.c['selected'],
+                           activebackground=self.c['selected'], activeforeground=self.c['accent'],
+                           font=('Segoe UI', 10), padx=20, pady=7, cursor='hand2').pack(side='left', expand=True, fill='x')
+        search_wrap = tk.Frame(library, bg=self.c['card'], highlightthickness=1,
+                               highlightbackground=self.c['border'], padx=8)
+        self.search_wrap = search_wrap
+        search_wrap.pack(fill='x')
+        self._label(search_wrap, 'Search', 9, 'muted').pack(side='left', padx=(0, 6))
+        self.search_entry = tk.Entry(search_wrap, textvariable=self.search, width=12,
+                                    bg=self.c['card'], fg=self.c['text'], insertbackground=self.c['accent'],
+                                    relief='flat', bd=0)
+        self.search_entry.pack(side='left', fill='x', expand=True, ipady=7)
+        filters = tk.Frame(library, bg=self.c['bg'])
+        filters.pack(fill='x', pady=(10, 0))
+        category = ttk.Combobox(filters, textvariable=self.category, values=CATEGORY_LIST,
+                                 state='readonly', width=13)
+        category.pack(side='left', fill='x', expand=True)
+        category.bind('<<ComboboxSelected>>', lambda _: self._render_library())
+        self.count_label = self._label(filters, '', 8, 'muted')
+        self.count_label.pack(side='right', padx=(5, 0))
+        footer = tk.Frame(library, bg=self.c['bg'])
+        footer.pack(side='bottom', fill='x', pady=(10, 0))
+        tk.Frame(footer, bg=self.c['border'], height=1).pack(fill='x', pady=(0, 8))
+        self._button(footer, '+ New voice', self._new_voice).pack(side='left')
+        self._button(footer, 'Import', lambda: self._open_share_dialog('import')).pack(side='right')
+        self.soundboard_toolbar = tk.Frame(library, bg=self.c['bg'])
+        self._button(self.soundboard_toolbar, 'Import sound', self._import_sound_prompt, primary=True).pack(side='left')
+        self._button(self.soundboard_toolbar, 'Stop playback', self._stop_soundboard).pack(side='left', padx=8)
+        self.library_scroll = scroll = tk.Frame(library, bg=self.c['bg'])
         scroll.pack(fill='both', expand=True, pady=(12, 0))
-        self.library_canvas = tk.Canvas(scroll, bg=self.c['bg'], highlightthickness=0)
+        self.library_canvas = tk.Canvas(scroll, bg=self.c['bg'], highlightthickness=0, width=205)
         scrollbar = ttk.Scrollbar(scroll, orient='vertical', command=self.library_canvas.yview)
         self.library_canvas.configure(yscrollcommand=scrollbar.set)
         scrollbar.pack(side='right', fill='y')
         self.library_canvas.pack(side='left', fill='both', expand=True)
         self.presets_grid_frame = tk.Frame(self.library_canvas, bg=self.c['bg'])
         self._grid_window = self.library_canvas.create_window(0, 0, window=self.presets_grid_frame, anchor='nw')
-        self.presets_grid_frame.bind(
-            '<Configure>', lambda _: self.library_canvas.configure(scrollregion=self.library_canvas.bbox('all'))
-        )
-        self.library_canvas.bind(
-            '<Configure>', lambda e: self.library_canvas.itemconfigure(self._grid_window, width=e.width)
-        )
+        self.presets_grid_frame.bind('<Configure>', lambda _: self.library_canvas.configure(scrollregion=self.library_canvas.bbox('all')))
+        self.library_canvas.bind('<Configure>', lambda e: self.library_canvas.itemconfigure(self._grid_window, width=e.width))
         self.root.bind('<MouseWheel>', self._scroll_library)
-
         self._editor(body)
         self._render_library()
+
+    def _new_voice(self):
+        self._switch_tab('voices')
+        self._reset_controls()
+        self.editor_tabs.select(self.essentials_tab)
 
     def _select_category(self, category):
         self.category.set(category)
@@ -455,83 +440,96 @@ class VoiceModApp:
     def _scroll_library(self, event):
         widget = self.root.winfo_containing(event.x_root, event.y_root)
         while widget:
-            if widget in (self.library_canvas, self.editor_canvas):
+            if widget in (self.library_canvas, self.editor_canvas, self.essentials_canvas):
                 widget.yview_scroll(-int(event.delta / 120), 'units')
                 return 'break'
             widget = getattr(widget, 'master', None)
 
     def _editor(self, body):
-        host = tk.Frame(body, bg=self.c['panel'], highlightthickness=1, highlightbackground=self.c['border'])
-        host.grid(row=0, column=1, sticky='nsew')
-
-        editor_actions = tk.Frame(host, bg=self.c['bg'], padx=16, pady=12)
-        editor_actions.pack(side='bottom', fill='x')
-        tk.Frame(host, bg=self.c['border'], height=1).pack(side='bottom', fill='x')
-
-        self.editor_canvas = tk.Canvas(host, bg=self.c['panel'], width=326, highlightthickness=0)
-        bar = ttk.Scrollbar(host, orient='vertical', command=self.editor_canvas.yview)
+        self.editor_host = host = tk.Frame(body, bg=self.c['panel'], padx=24, pady=12)
+        host.grid(row=0, column=1, sticky='nsew', padx=(1, 0))
+        meta = tk.Frame(host, bg=self.c['panel'])
+        meta.pack(fill='x')
+        self._label(meta, 'VOICE EDITOR', 9, 'muted', True).pack(side='left')
+        self.latency_label = self._label(meta, '', 8, 'muted')
+        self.latency_label.pack(side='right')
+        self.active_name = self._label(host, self.selected_preset_name, 23, bold=True, anchor='w')
+        self.active_name.pack(fill='x', pady=(5, 2))
+        self.active_description = self._label(host, VOICE_PRESETS[self.selected_preset_name]['description'],
+                                             10, 'muted', anchor='w', wraplength=650, justify='left')
+        self.active_description.pack(fill='x')
+        self.active_description.bind('<Configure>', lambda e: self.active_description.configure(wraplength=max(200, e.width)))
+        monitor = tk.Frame(host, bg=self.c['bg'], padx=12, pady=10,
+                           highlightthickness=1, highlightbackground=self.c['border'])
+        monitor.pack(fill='x', pady=(12, 10))
+        info = tk.Frame(monitor, bg=self.c['bg'], width=125)
+        info.pack(side='left', fill='y')
+        self._label(info, 'INPUT MONITOR', 8, 'muted', True).pack(anchor='w')
+        self.meter_label = self._label(info, '-- dB', 17, bold=True)
+        self.meter_label.pack(anchor='w', pady=(3, 0))
+        self.live_badge = self._label(info, 'Stopped', 9, 'muted')
+        self.live_badge.pack(anchor='w')
+        self.meter_canvas = tk.Canvas(monitor, height=56, bg=self.c['bg'], highlightthickness=0)
+        self.meter_canvas.pack(side='left', fill='both', expand=True, padx=(20, 0))
+        self._meter_history = [0.0] * 72
+        # Keep the recorder action honest: it opens the existing complete A/B recording flow.
+        recorder = tk.Frame(host, bg=self.c['panel'])
+        recorder.pack(side='bottom', fill='x', pady=(12, 0))
+        tk.Frame(recorder, bg=self.c['border'], height=1).pack(fill='x', pady=(0, 10))
+        self._button(recorder, 'Record & compare', self._open_voice_test).pack(side='right')
+        self._label(recorder, 'RECORD & COMPARE', 9, bold=True).pack(anchor='w')
+        self._label(recorder, 'Record once. Compare original and processed audio.', 9, 'muted').pack(anchor='w', pady=(3, 0))
+        actions = tk.Frame(host, bg=self.c['panel'])
+        actions.pack(side='bottom', fill='x', pady=(12, 0))
+        self._button(actions, 'Reset changes', self._reset_controls).pack(side='left')
+        self._button(actions, 'Export voice', self._export_active_voice).pack(side='right', padx=(8, 0))
+        self._button(actions, 'Save as preset', self._save_preset_prompt, primary=True).pack(side='right')
+        self.editor_tabs = ttk.Notebook(host, style='Studio.TNotebook')
+        self.editor_tabs.pack(fill='both', expand=True)
+        self.essentials_tab = tk.Frame(self.editor_tabs, bg=self.c['panel'])
+        self.editor_tabs.add(self.essentials_tab, text='Essentials')
+        self.essentials_canvas = tk.Canvas(self.essentials_tab, bg=self.c['panel'], highlightthickness=0)
+        essentials_bar = ttk.Scrollbar(self.essentials_tab, orient='vertical', command=self.essentials_canvas.yview)
+        self.essentials_canvas.configure(yscrollcommand=essentials_bar.set)
+        essentials_bar.pack(side='right', fill='y')
+        self.essentials_canvas.pack(side='left', fill='both', expand=True)
+        essentials = tk.Frame(self.essentials_canvas, bg=self.c['panel'], pady=6)
+        essentials_window = self.essentials_canvas.create_window(0, 0, window=essentials, anchor='nw')
+        essentials.bind('<Configure>', lambda _: self.essentials_canvas.configure(scrollregion=self.essentials_canvas.bbox('all')))
+        self.essentials_canvas.bind('<Configure>', lambda e: self.essentials_canvas.itemconfigure(essentials_window, width=e.width))
+        advanced_host = tk.Frame(self.editor_tabs, bg=self.c['panel'])
+        self.editor_tabs.add(advanced_host, text='Advanced')
+        self.editor_canvas = tk.Canvas(advanced_host, bg=self.c['panel'], highlightthickness=0)
+        bar = ttk.Scrollbar(advanced_host, orient='vertical', command=self.editor_canvas.yview)
         bar.pack(side='right', fill='y')
         self.editor_canvas.configure(yscrollcommand=bar.set)
         self.editor_canvas.pack(side='left', fill='both', expand=True)
-
-        editor = tk.Frame(self.editor_canvas, bg=self.c['panel'], padx=16, pady=16)
-        window = self.editor_canvas.create_window(0, 0, window=editor, anchor='nw')
-        editor.bind('<Configure>', lambda _: self.editor_canvas.configure(scrollregion=self.editor_canvas.bbox('all')))
+        advanced = tk.Frame(self.editor_canvas, bg=self.c['panel'], pady=12, padx=2)
+        window = self.editor_canvas.create_window(0, 0, window=advanced, anchor='nw')
+        advanced.bind('<Configure>', lambda _: self.editor_canvas.configure(scrollregion=self.editor_canvas.bbox('all')))
         self.editor_canvas.bind('<Configure>', lambda e: self.editor_canvas.itemconfigure(window, width=e.width))
-
-        # Active Voice Summary Card
-        summary = tk.Frame(
-            editor, bg=self.c['card'], padx=14, pady=12, highlightthickness=1, highlightbackground=self.c['border']
-        )
-        summary.pack(fill='x')
-        top_meta = tk.Frame(summary, bg=self.c['card'])
-        top_meta.pack(fill='x')
-        self._label(top_meta, 'ACTIVE VOICE', 8, 'accent', True).pack(side='left')
-        self.latency_label = self._label(top_meta, '', 8, 'accent', True)
-        self.latency_label.pack(side='right')
-        self._update_latency_label()
-
-        self.active_name = self._label(summary, self.selected_preset_name, 14, bold=True, wraplength=270, justify='left')
-        self.active_name.pack(anchor='w', pady=(6, 4))
-        self.active_description = self._label(
-            summary, VOICE_PRESETS[self.selected_preset_name]['description'], 9, 'muted', wraplength=270, justify='left'
-        )
-        self.active_description.pack(anchor='w')
-
-        card_btns = tk.Frame(summary, bg=self.c['card'])
-        card_btns.pack(fill='x', pady=(10, 0))
-        card_btns.columnconfigure(0, weight=1)
-        card_btns.columnconfigure(1, weight=1)
-        self._button(card_btns, 'Edit in Rack', self._recall_voice).grid(row=0, column=0, sticky='ew', padx=(0, 6))
-        self._button(card_btns, 'Share Voice', self._export_active_voice, tone='info').grid(row=0, column=1, sticky='ew')
-
-        tk.Frame(editor, bg=self.c['border'], height=1).pack(fill='x', pady=14)
-        self._label(editor, 'Voice Shaper', 12, bold=True).pack(anchor='w')
-        self._label(editor, 'Move a slider to sculpt a custom variation.', 9, 'muted', wraplength=280, justify='left').pack(
-            anchor='w', pady=(2, 10)
-        )
-
-        primary_card = tk.Frame(
-            editor, bg=self.c['card'], padx=12, pady=10, highlightthickness=1, highlightbackground=self.c['border']
-        )
-        primary_card.pack(fill='x', pady=(0, 10))
-        for attr, label, low, high, step, initial, value in (
-            ('pitch', 'Pitch Shift', -12, 12, .5, 0, '0.0 st'),
-            ('dist', 'Harmonic Grit', 0, 25, 1, 0, '0 dB'),
-            ('reverb', 'Space & Reverb', 0, 1, .05, 0, '0%'),
-            ('bit', 'Bit Depth', 4, 16, 1, 16, '16 bits'),
-        ):
-            row = tk.Frame(primary_card, bg=self.c['card'])
-            row.pack(fill='x')
-            self._label(row, label, 9).pack(side='left')
-            readout = self._label(row, value, 9, 'accent', True)
+        essentials.columnconfigure(0, weight=1, uniform='controls')
+        essentials.columnconfigure(1, weight=1, uniform='controls')
+        for i, (attr, label, low, high, step, initial, value, description) in enumerate((
+            ('pitch', 'Pitch', -12, 12, .5, 0, '0.0 st', 'Shift your voice higher or lower.'),
+            ('dist', 'Distortion', 0, 25, 1, 0, '0 dB', 'Add a gritty, saturated edge.'),
+            ('reverb', 'Space', 0, 1, .05, 0, '0%', 'Add a sense of space and reverb.'),
+            ('bit', 'Bit depth', 4, 16, 1, 16, '16 bits', 'Lower values add a lo-fi texture.'),
+        )):
+            cell = tk.Frame(essentials, bg=self.c['panel'], padx=12, pady=9)
+            cell.grid(row=i//2, column=i%2, sticky='nsew')
+            heading = tk.Frame(cell, bg=self.c['panel'])
+            heading.pack(fill='x')
+            self._label(heading, label, 12, bold=True).pack(side='left')
+            readout = self._label(heading, value, 11, 'accent', True)
             readout.pack(side='right')
-            setattr(self, attr + '_val_lbl', readout)
-            scale = self._scale(primary_card, low, high, step, self._on_custom_slider_change)
+            setattr(self, attr+'_val_lbl', readout)
+            self._label(cell, description, 9, 'muted', anchor='w').pack(fill='x', pady=(5, 8))
+            scale = self._scale(cell, low, high, step, self._on_custom_slider_change)
             scale.set(initial)
-            scale.pack(fill='x', pady=(2, 8))
-            setattr(self, attr + '_scale', scale)
-
+            scale.pack(fill='x')
+            setattr(self, attr+'_scale', scale)
+            tk.Frame(cell, bg=self.c['border'], height=1).pack(fill='x', pady=(12, 0))
         self.extra_scales = {}
         self.extra_readouts = {}
         self.effect_enabled = {}
@@ -584,6 +582,7 @@ class VoiceModApp:
             'Parallel distortion': 'parallel_enabled',
         }
         self.extra_units = {}
+        editor = advanced
         self._label(editor, 'DSP MODULES', 8, 'subtle', True).pack(anchor='w', pady=(4, 6))
 
         for title, settings in groups:
@@ -625,16 +624,8 @@ class VoiceModApp:
                 scale.set(value)
                 scale.pack(fill='x', pady=(1, 6))
                 self.extra_scales[key] = scale
-            if title == 'Vocal character':
-                details.pack(fill='x')
-                toggle.configure(text=title + '  -')
 
-        editor_actions.columnconfigure(0, weight=2)
-        editor_actions.columnconfigure(1, weight=1)
-        self._button(editor_actions, 'Save Custom Voice', self._save_preset_prompt, primary=True).grid(
-            row=0, column=0, sticky='ew', padx=(0, 8)
-        )
-        self._button(editor_actions, 'Reset', self._reset_controls).grid(row=0, column=1, sticky='ew')
+        self._update_latency_label()
 
     def _toggle_effect_section(self, title):
         toggle, details = self.effect_sections[title]
@@ -646,25 +637,7 @@ class VoiceModApp:
             toggle.configure(text=title + '  -')
 
     def _scale(self, parent, low, high, step, command, **kwargs):
-        return tk.Scale(
-            parent,
-            from_=low,
-            to=high,
-            resolution=step,
-            orient='horizontal',
-            showvalue=False,
-            command=command,
-            bg=parent.cget('bg'),
-            fg=self.c['text'],
-            troughcolor=self.c['border'],
-            activebackground=self.c['accent'],
-            highlightthickness=0,
-            sliderrelief='flat',
-            bd=0,
-            sliderlength=14,
-            width=7,
-            **kwargs,
-        )
+        return StudioScale(parent, low, high, step, command, **kwargs)
 
     def _preset_latency_ms(self, name, preset):
         if name in self._latency_cache:
@@ -692,135 +665,53 @@ class VoiceModApp:
         self.all_presets = dict(VOICE_PRESETS)
         self.user_presets = load_user_presets()
         self.all_presets.update(self.user_presets)
-
         query = self.search.get().strip().lower()
-        found = [
-            (n, p)
-            for n, p in self.all_presets.items()
-            if (self.category.get() == 'All voices' or p['category'] == self.category.get())
-            and query in (n + ' ' + p['description']).lower()
-        ]
-        self.count_label.configure(text=f'{len(found)} voices')
-
-        for index, (name, preset) in enumerate(found):
-            selected = name == self.selected_preset_name
-            bg_col = self.c['selected'] if selected else self.c['card']
-            border_col = self.c['accent'] if selected else self.c['border']
-            card = tk.Frame(
-                self.presets_grid_frame,
-                bg=bg_col,
-                padx=12,
-                pady=10,
-                highlightthickness=1,
-                highlightbackground=border_col,
-            )
-            card.grid(row=index // 3, column=index % 3, sticky='nsew', padx=(0, 10), pady=(0, 10))
-
-            head = tk.Frame(card, bg=bg_col)
-            head.pack(fill='x')
-            title_lbl = tk.Label(
-                head,
-                text=name,
-                font=('Segoe UI', 10, 'bold'),
-                bg=bg_col,
-                fg=self.c['accent'] if selected else self.c['text'],
-                anchor='w',
-                justify='left',
-                wraplength=150,
-                cursor='hand2',
-            )
-            title_lbl.pack(side='left', fill='x', expand=True)
-
-            ms = self._preset_latency_ms(name, preset)
-            badge_bg = '#122B23' if ms < 25 else self.c['warn_bg'] if ms < 105 else self.c['raised']
-            badge_fg = self.c['accent'] if ms < 25 else self.c['warn'] if ms < 105 else self.c['muted']
-            lat_lbl = tk.Label(
-                head,
-                text=f'~{ms:.0f}ms',
-                font=('Consolas', 8, 'bold'),
-                bg=badge_bg,
-                fg=badge_fg,
-                padx=6,
-                pady=1,
-                cursor='hand2',
-            )
-            lat_lbl.pack(side='right', anchor='n')
-
-            desc_text = preset['description']
-            if len(desc_text) > 74:
-                desc_text = desc_text[:71].rstrip() + '...'
-            desc_lbl = tk.Label(
-                card,
-                text=desc_text,
-                font=('Segoe UI', 8),
-                bg=bg_col,
-                fg=self.c['muted'],
-                anchor='w',
-                justify='left',
-                wraplength=210,
-                height=2,
-                cursor='hand2',
-            )
-            desc_lbl.pack(fill='x', pady=(6, 8))
-
-            foot = tk.Frame(card, bg=bg_col)
-            foot.pack(fill='x')
-            status_lbl = tk.Label(
-                foot,
-                text='● Active' if selected else preset['category'],
-                font=('Segoe UI', 8, 'bold' if selected else 'normal'),
-                bg=bg_col,
-                fg=self.c['accent'] if selected else self.c['subtle'],
-                cursor='hand2',
-            )
-            status_lbl.pack(side='left')
-
-            if name in self.user_presets:
-                del_btn = tk.Button(
-                    foot,
-                    text='Delete',
-                    command=lambda n=name: self._delete_user_preset(n),
-                    font=('Segoe UI', 8),
-                    bg=bg_col,
-                    fg=self.c['danger'],
-                    activebackground=bg_col,
-                    activeforeground=self.c['danger'],
-                    relief='flat',
-                    bd=0,
-                    cursor='hand2',
-                )
-                del_btn.pack(side='right', padx=(8, 0))
-
-            exp_btn = tk.Button(
-                foot,
-                text='Export',
-                command=lambda n=name: self._export_voice_by_name(n),
-                font=('Segoe UI', 8),
-                bg=bg_col,
-                fg=self.c['info'],
-                activebackground=bg_col,
-                activeforeground=self.c['text'],
-                relief='flat',
-                bd=0,
-                cursor='hand2',
-            )
-            exp_btn.pack(side='right')
-
-            activate = lambda _e=None, n=name, p=preset: self._activate_preset(n, p)
-            for w in (card, head, title_lbl, lat_lbl, desc_lbl, foot, status_lbl):
-                w.bind('<Button-1>', activate)
-            self.preset_buttons[name] = title_lbl
-
-        for col in (0, 1, 2):
-            self.presets_grid_frame.columnconfigure(col, weight=1, uniform='voices')
+        found = [(n, p) for n, p in self.all_presets.items()
+                 if (self.category.get() == 'All voices' or p['category'] == self.category.get())
+                 and (self.library_scope.get() != 'Saved' or n in self.user_presets)
+                 and query in (n+' '+p['description']).lower()]
+        self.count_label.configure(text=str(len(found)))
+        # Reset columns after switching back from the three-column soundboard.
+        for col in (1, 2):
+            self.presets_grid_frame.columnconfigure(col, weight=0, minsize=0, uniform='')
+        self.presets_grid_frame.columnconfigure(0, weight=1, uniform='')
+        categories = list(dict.fromkeys(p['category'] for _, p in found))
+        row = 0
+        for category in categories:
+            self._label(self.presets_grid_frame, category.upper(), 8, 'muted', True).grid(
+                row=row, column=0, sticky='w', pady=(12 if row else 0, 5), padx=6)
+            row += 1
+            for name, preset in found:
+                if preset['category'] != category:
+                    continue
+                selected = name == self.selected_preset_name
+                title = ('✓  ' if selected else '    ') + name
+                button = tk.Button(self.presets_grid_frame, text=title,
+                                   command=lambda n=name, p=preset: self._activate_preset(n, p),
+                                   font=('Segoe UI', 10, 'bold' if selected else 'normal'),
+                                   anchor='w', padx=8, pady=7, relief='flat', bd=0,
+                                   bg=self.c['selected'] if selected else self.c['bg'],
+                                   fg=self.c['accent'] if selected else self.c['text'],
+                                   activebackground=self.c['selected'], activeforeground=self.c['accent'],
+                                   highlightthickness=1, highlightbackground=self.c['bg'],
+                                   highlightcolor=self.c['accent'], cursor='hand2', takefocus=True)
+                button.grid(row=row, column=0, sticky='ew', pady=1)
+                menu = tk.Menu(button, tearoff=False)
+                menu.add_command(label='Export voice', command=lambda n=name: self._export_voice_by_name(n))
+                if name in self.user_presets:
+                    menu.add_command(label='Delete saved voice', command=lambda n=name: self._delete_user_preset(n))
+                def show_menu(event, m=menu):
+                    try:
+                        m.tk_popup(event.x_root, event.y_root)
+                    finally:
+                        m.grab_release()
+                button.bind('<Button-3>', show_menu)
+                button.bind('<Shift-F10>', lambda e, m=menu, b=button: m.tk_popup(b.winfo_rootx(), b.winfo_rooty()+b.winfo_height()))
+                self.preset_buttons[name] = button
+                row += 1
         if not found:
-            self._label(
-                self.presets_grid_frame,
-                'No voices found. Try another search or category pill.',
-                11,
-                'muted',
-                wraplength=420,
-            ).grid(row=0, column=0, columnspan=3, pady=40)
+            self._label(self.presets_grid_frame, 'No saved voices yet.' if self.library_scope.get() == 'Saved'
+                        else 'No matching voices.', 10, 'muted', wraplength=180).grid(row=0, column=0, pady=25)
         self.library_canvas.yview_moveto(0)
 
     def _render_soundboard_grid(self):
@@ -1183,14 +1074,16 @@ class VoiceModApp:
         self.active_name.configure(text=name)
         self.active_description.configure(text=preset['description'])
         self._editor_base_voice = preset.get('params', {}).get('base_voice')
-        if 'params' in preset:
+        params = preset.get('params') or builtin_editor_params(name)
+        if params:
+            self._editor_base_voice = params.get('base_voice')
             self._syncing = True
             for attr, key in (('pitch', 'pitch'), ('dist', 'distortion'), ('reverb', 'reverb'), ('bit', 'bitcrush')):
-                getattr(self, attr + '_scale').set(preset['params'][key])
+                getattr(self, attr + '_scale').set(params[key])
             for key, scale in self.extra_scales.items():
-                scale.set(preset['params'].get(key, EXTRA_DEFAULTS[key]))
+                scale.set(params.get(key, EXTRA_DEFAULTS[key]))
             for key, variable in self.effect_enabled.items():
-                variable.set(bool(preset['params'].get(key, EXTRA_DEFAULTS[key])))
+                variable.set(bool(params.get(key, EXTRA_DEFAULTS[key])))
             self.root.update()
             self._syncing = False
             self._readouts()
@@ -1372,7 +1265,7 @@ class VoiceModApp:
         if self.devices_panel.winfo_manager():
             self._save_audio_settings()
             self.devices_panel.pack_forget()
-            self.setup_btn.configure(text='Audio Setup')
+            self.setup_btn.configure(text='Audio setup')
         else:
             self.devices_panel.pack(fill='x', before=self.audio_controls, pady=(0, 12))
             self.setup_btn.configure(text='Done')
@@ -1559,10 +1452,10 @@ class VoiceModApp:
             text='Stop voice changer' if running else 'Start voice changer',
             bg=self.c['danger_bg'] if running else self.c['accent'],
             fg=self.c['danger'] if running else self.c['ink'],
-            highlightbackground='#3B262B' if running else self.c['accent'],
+            highlightbackground='#D9AAAA' if running else self.c['accent'],
         )
         self.live_badge.configure(
-            text='● LIVE' if running else '● STOPPED',
+            text='Live' if running else 'Stopped',
             bg=self.c['selected'] if running else self.c['raised'],
             fg=self.c['accent'] if running else self.c['muted'],
         )
@@ -1593,18 +1486,19 @@ class VoiceModApp:
         db = 20 * math.log10(max(level, 1e-6))
         value = max(0.0, min(1.0, (db + 60) / 60))
         width = max(1, canvas.winfo_width())
-        segments = 16
-        gap = 2
-        seg_w = max(2, (width - gap * (segments - 1)) / segments)
-        lit = int(round(value * segments))
-        for i in range(segments):
-            x0 = i * (seg_w + gap)
-            x1 = x0 + seg_w
-            if i < lit:
-                color = self.c['danger'] if i >= 13 else self.c['warn'] if i >= 10 else self.c['accent']
-            else:
-                color = self.c['raised']
-            canvas.create_rectangle(x0, 1, x1, 9, fill=color, width=0)
+        height = max(1, canvas.winfo_height())
+        self._meter_history.append(value if self.engine.is_running else 0.0)
+        self._meter_history = self._meter_history[-72:]
+        for x in range(0, width, 24):
+            canvas.create_line(x, 0, x, height, fill=self.c['border'])
+        for y in range(0, height, 22):
+            canvas.create_line(0, y, width, y, fill=self.c['border'])
+        step = width / len(self._meter_history)
+        for i, sample in enumerate(self._meter_history):
+            bar_height = max(2, sample * (height - 6))
+            color = self.c['danger'] if sample > .9 else self.c['accent']
+            canvas.create_rectangle(i*step+1, height-bar_height, (i+1)*step-2, height,
+                                    fill=color if sample else self.c['border'], width=0)
         self.meter_label.configure(text=f'{db:.0f} dB' if level > 1e-6 else '-- dB')
 
         if self.engine._route_guard is not None and self.engine._route_guard.error:

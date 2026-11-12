@@ -63,7 +63,11 @@ The expanded Voicemod inspection is documented in analysis/voice-quality-investi
 
 ## Desktop interface
 
-The UI uses a charcoal and mint theme, a searchable/category-filtered voice library, a separate custom editor, and persistent audio controls. Both content panels scroll at smaller window sizes. Ctrl+F focuses search; native buttons and sliders support keyboard navigation. Selected voices have a text indicator as well as a color change. Device changes are disabled while streaming. Restart the app to load the new interface.
+The UI uses a light studio theme with warm off-white surfaces and forest-green accents. A compact, grouped sidebar provides search, category filtering, and Voices / Saved views. The editor separates the four essential controls from the scrollable Advanced effects. The input monitor displays recent real microphone levels while streaming; it stays flat when stopped. Persistent bottom controls provide Start / Stop, Hear myself, Mute mic, and output volume.
+
+Audio setup contains device routing, microphone cleanup, and the global hotkey setting. Record & compare opens the existing recording and A/B playback window. Soundboard remains available in its own workspace tab. Export the selected voice from the editor; right-click a sidebar voice (or press Shift+F10) for export and saved-voice deletion. Ctrl+F focuses search. Sliders support arrow keys in their configured steps and Home / End. Both editor tabs and the library scroll at smaller window sizes. Selected voices have a checkmark as well as a color change. Device changes are disabled while streaming. Restart the app to load the new interface.
+
+![Light studio interface](docs/ui-light-studio.png)
 
 Design guidance: UI/UX Pro Max, installed locally under .agents/skills/ui-ux-pro-max. Its flat-design, contrast, focus and spacing guidance was adapted to Tkinter; web landing-page and mobile-only recommendations were not applied.
 
