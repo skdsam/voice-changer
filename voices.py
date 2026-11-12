@@ -27,7 +27,25 @@ from pedalboard import (
 )
 
 from streaming_dsp import VoiceChain
-from voice_effects import FormantShift, RingModulation, Harmony, Resonator, ToneDelay, ParallelDistortion, CommunicationChannel
+from voice_effects import (
+    FormantShift,
+    RingModulation,
+    Harmony,
+    Resonator,
+    ToneDelay,
+    ParallelDistortion,
+    CommunicationChannel,
+    SampleRateReduce,
+    Vocoder,
+    DuckedReverb,
+    EnvelopeTalkbox,
+    Whisperizer,
+    FrequencyShifter,
+    SubharmonicTitan,
+    ReverseGranulator,
+    ShimmerReverb,
+    TapeWowFlutter,
+)
 
 
 def Pedalboard(effects):
@@ -39,93 +57,210 @@ PitchShift = NativePitchShift
 CUSTOM_PRESETS_FILE = os.path.join(os.path.dirname(__file__), "custom_presets.json")
 
 
-def speech_chain(effects):
-    # Remove rumble before transformation, then gently level the result.
+def speech_chain(effects, makeup_db=1.0):
+    # Remove sub-rumble before transformation, then gently level the result.
     return Pedalboard([
-        HighpassFilter(cutoff_frequency_hz=70),
+        HighpassFilter(cutoff_frequency_hz=75),
         *effects,
-        Compressor(threshold_db=-22, ratio=2.0, attack_ms=10, release_ms=120),
-        Gain(gain_db=2),
+        Compressor(threshold_db=-22, ratio=2.2, attack_ms=10, release_ms=110),
+        Gain(gain_db=makeup_db),
     ])
 
 
 def create_clean_voice():
-    return speech_chain([])
+    return speech_chain([], makeup_db=1.5)
 
 
-def create_deep_voice(semitones=-3.5):
+def create_warm_low_voice():
+    return speech_chain([
+        PitchShift(semitones=-1.5),
+        FormantShift(0.5, mix=0.55),
+        LowShelfFilter(cutoff_frequency_hz=160, gain_db=2.0),
+    ], makeup_db=1.5)
+
+
+def create_deep_voice(semitones=-4.5):
     return speech_chain([
         PitchShift(semitones=semitones),
-        PeakFilter(cutoff_frequency_hz=160, gain_db=2),
-        PeakFilter(cutoff_frequency_hz=2800, gain_db=1.5),
-    ])
+        FormantShift(-2.5, mix=0.85),
+        Resonator(frequency=135, decay=0.40, mix=0.16),
+        LowShelfFilter(cutoff_frequency_hz=150, gain_db=3.0),
+        ParallelDistortion(drive_db=10, mix=0.14),
+    ], makeup_db=2.0)
 
 
 def create_monster_voice():
     return speech_chain([
-        PitchShift(semitones=-6),
-        Distortion(drive_db=3),
-        Gain(gain_db=-3),
-        LowpassFilter(cutoff_frequency_hz=6500),
-    ])
+        PitchShift(semitones=-7.0),
+        FormantShift(-3.5, mix=0.9),
+        ParallelDistortion(drive_db=16, mix=0.35),
+        LowpassFilter(cutoff_frequency_hz=5200),
+        DuckedReverb(room_size=0.45, damping=0.65, wet_level=0.16, predelay_ms=25.0, duck_amount=0.5),
+    ], makeup_db=1.5)
 
 
-def create_chipmunk_voice(semitones=5):
-    return speech_chain([PitchShift(semitones=semitones),
-                         LowpassFilter(cutoff_frequency_hz=8500)])
+def create_bright_voice():
+    return speech_chain([
+        PitchShift(semitones=1.5),
+        FormantShift(-0.5, mix=0.5),
+        PeakFilter(cutoff_frequency_hz=3000, gain_db=2.0),
+        HighShelfFilter(cutoff_frequency_hz=8500, gain_db=2.5),
+    ], makeup_db=1.5)
+
+
+def create_chipmunk_voice(semitones=6.5):
+    return speech_chain([
+        PitchShift(semitones=semitones),
+        FormantShift(4.0, mix=0.85),
+        PeakFilter(cutoff_frequency_hz=2400, gain_db=2.0),
+    ], makeup_db=1.5)
 
 
 def create_robot_voice():
     return speech_chain([
-        PitchShift(semitones=-1.5),
-        Chorus(rate_hz=7, depth=.35, feedback=.05, mix=.25),
-        Bitcrush(bit_depth=12),
-        LowpassFilter(cutoff_frequency_hz=7500),
-    ])
+        PitchShift(semitones=-2.0),
+        RingModulation(frequency=140.0, mix=0.36),
+        Resonator(frequency=260.0, decay=0.48, mix=0.22),
+        Chorus(rate_hz=0.8, depth=0.20, feedback=0.05, mix=0.22),
+        Bitcrush(bit_depth=10),
+        LowpassFilter(cutoff_frequency_hz=7200),
+    ], makeup_db=8.5)
+
+
+def create_vocoder_voice():
+    return speech_chain([
+        Vocoder(carrier_hz=115.0, bands=16, mix=0.92),
+        Chorus(rate_hz=0.6, depth=0.25, feedback=0.05, mix=0.25),
+    ], makeup_db=4.5)
 
 
 def create_radio_walkie_talkie():
-    return speech_chain([CommunicationChannel(mode=2,drive=5,static=0,click=0)])
+    return speech_chain([CommunicationChannel(mode=2, drive=5, static=0, click=0)], makeup_db=2.0)
 
 
 def create_telephone_voice():
-    return speech_chain([CommunicationChannel(mode=1,drive=2)])
+    return speech_chain([CommunicationChannel(mode=1, drive=2)], makeup_db=2.0)
 
 
 def create_astronaut_voice():
     return speech_chain([
-        HighpassFilter(cutoff_frequency_hz=250),
-        LowpassFilter(cutoff_frequency_hz=4800),
-        Delay(delay_seconds=.075, feedback=.12, mix=.08),
-        Reverb(room_size=.3, damping=.65, wet_level=.08, dry_level=.95),
-    ])
+        CommunicationChannel(mode=2, drive=3, static=0.06, click=0.15, mix=0.55, gate_db=-48),
+        Resonator(frequency=320, decay=0.35, mix=0.14),
+        Delay(delay_seconds=.065, feedback=.12, mix=.08),
+    ], makeup_db=4.8)
 
 
 def create_retro_8bit():
-    return speech_chain([Bitcrush(bit_depth=9),
-                         LowpassFilter(cutoff_frequency_hz=5500)])
+    return speech_chain([
+        SampleRateReduce(target_rate=8500.0, mix=0.9),
+        Bitcrush(bit_depth=7),
+        LowpassFilter(cutoff_frequency_hz=4800),
+    ], makeup_db=2.0)
 
 
 def create_cathedral_voice():
     return speech_chain([
-        Reverb(room_size=.78, damping=.6, wet_level=.18, dry_level=.95),
-    ])
+        DuckedReverb(room_size=0.82, damping=0.50, wet_level=0.30, predelay_ms=35.0, duck_amount=0.60),
+    ], makeup_db=2.0)
 
 
 def create_alien_voice():
     return speech_chain([
-        PitchShift(semitones=3),
-        Phaser(rate_hz=.45, depth=.35, centre_frequency_hz=1100,
-               feedback=.1, mix=.18),
-        Delay(delay_seconds=.09, feedback=.1, mix=.07),
-    ])
+        PitchShift(semitones=2.5),
+        FormantShift(-3.0, mix=0.80),
+        Phaser(rate_hz=.8, depth=.55, centre_frequency_hz=1100, feedback=.25, mix=.32),
+        ToneDelay(time_ms=95, feedback=.18, tone_hz=3500, mix=.14),
+    ], makeup_db=4.5)
 
 
 def create_broadcast_voice():
     return speech_chain([
-        PeakFilter(cutoff_frequency_hz=150, gain_db=2),
-        PeakFilter(cutoff_frequency_hz=3200, gain_db=2),
-    ])
+        PeakFilter(cutoff_frequency_hz=280, gain_db=-2.5),
+        LowShelfFilter(cutoff_frequency_hz=130, gain_db=2.0),
+        PeakFilter(cutoff_frequency_hz=3200, gain_db=2.0),
+        HighShelfFilter(cutoff_frequency_hz=9500, gain_db=2.0),
+        ParallelDistortion(drive_db=6.0, mix=0.12),
+    ], makeup_db=1.0)
+
+
+def create_pa_stadium_voice():
+    return speech_chain([
+        HighpassFilter(cutoff_frequency_hz=320),
+        LowpassFilter(cutoff_frequency_hz=4200),
+        PeakFilter(cutoff_frequency_hz=1250, gain_db=5.0),
+        ToneDelay(time_ms=145, feedback=0.18, tone_hz=2800, mix=0.22),
+        DuckedReverb(room_size=0.70, damping=0.55, wet_level=0.22, predelay_ms=45.0, duck_amount=0.50),
+    ], makeup_db=1.5)
+
+
+def create_underwater_voice():
+    return speech_chain([
+        LowpassFilter(cutoff_frequency_hz=780),
+        LowpassFilter(cutoff_frequency_hz=780),
+        Phaser(rate_hz=0.35, depth=0.70, centre_frequency_hz=450, feedback=0.30, mix=0.45),
+        Chorus(rate_hz=1.2, depth=0.45, feedback=0.1, mix=0.35),
+    ], makeup_db=11.5)
+
+
+def create_vintage_radio_voice():
+    return speech_chain([
+        HighpassFilter(cutoff_frequency_hz=320),
+        LowpassFilter(cutoff_frequency_hz=3600),
+        PeakFilter(cutoff_frequency_hz=1100, gain_db=4.0),
+        ParallelDistortion(drive_db=14.0, mix=0.35),
+    ], makeup_db=1.5)
+
+
+def create_talkbox_voice():
+    return speech_chain([
+        EnvelopeTalkbox(sensitivity=0.075, q=3.8, mix=0.88),
+        PeakFilter(cutoff_frequency_hz=1200, gain_db=2.0),
+    ], makeup_db=2.5)
+
+
+def create_whisper_voice():
+    return speech_chain([
+        Whisperizer(mix=0.92, seed=101),
+        HighShelfFilter(cutoff_frequency_hz=3200, gain_db=2.0),
+    ], makeup_db=4.0)
+
+
+def create_shifter_voice():
+    return speech_chain([
+        FrequencyShifter(shift_hz=62.0, mix=0.78),
+        HighpassFilter(cutoff_frequency_hz=110),
+        PeakFilter(cutoff_frequency_hz=2600, gain_db=2.0),
+    ], makeup_db=2.2)
+
+
+def create_titan_voice():
+    return speech_chain([
+        SubharmonicTitan(sub_level=0.75, exciter_mix=0.22),
+        PeakFilter(cutoff_frequency_hz=1900, gain_db=1.5),
+    ], makeup_db=1.0)
+
+
+def create_backmask_voice():
+    return speech_chain([
+        ReverseGranulator(grain_ms=85.0, mix=0.88),
+        LowpassFilter(cutoff_frequency_hz=6800),
+    ], makeup_db=4.5)
+
+
+def create_shimmer_voice():
+    return speech_chain([
+        ShimmerReverb(room_size=0.86, damping=0.42, wet_level=0.35, shimmer_feedback=0.32, duck_amount=0.45),
+        HighShelfFilter(cutoff_frequency_hz=6500, gain_db=1.5),
+    ], makeup_db=1.5)
+
+
+def create_cassette_voice():
+    return speech_chain([
+        TapeWowFlutter(wow_hz=0.85, wow_ms=4.2, flutter_hz=5.9, flutter_ms=0.45, drive=1.8, hiss_level=0.006, seed=202),
+        HighpassFilter(cutoff_frequency_hz=160),
+        LowShelfFilter(cutoff_frequency_hz=120, gain_db=3.0),
+        LowpassFilter(cutoff_frequency_hz=4400),
+    ], makeup_db=2.0)
 
 
 EXTRA_DEFAULTS = dict(formant=0., formant_mix=1., warmth=0., presence=0., brightness=0.,
@@ -173,16 +308,18 @@ def create_custom_voice(pitch_semitones=0., reverb_amount=0., distortion_db=0., 
         effects.append(RingModulation(params['ring_hz'], params['ring_mix']))
     if params['distortion'] > .5:
         effects.extend([Distortion(drive_db=params['distortion']),
-                        Gain(gain_db=-min(12, params['distortion'] * .5))])
+                        Gain(gain_db=-min(15.0, params['distortion'] * .65))])
     if params['bitcrush'] < 16:
         effects.append(Bitcrush(bit_depth=params['bitcrush']))
     if params['comms_enabled'] and params['comms_mode'] and params['comms_mix']:
         effects.append(_communication(params))
     if params['parallel_enabled'] and params['parallel_mix'] > 0:
-        effects.append(ParallelDistortion(params['parallel_drive'],params['parallel_mix']))
-    if params['harmony_enabled'] and params['harmony_mix'] > 0 and (params['harmony_level1']+params['harmony_level2']) > 0:
-        effects.append(Harmony(params['harmony_pitch1'],params['harmony_level1'],
-                               params['harmony_pitch2'],params['harmony_level2'],params['harmony_mix']))
+        effects.append(ParallelDistortion(params['parallel_drive'], params['parallel_mix']))
+    if params['harmony_enabled'] and params['harmony_mix'] > 0 and (params['harmony_level1'] + params['harmony_level2']) > 0:
+        has_shift = abs(params['harmony_pitch1']) > 0.01 or abs(params['harmony_pitch2']) > 0.01
+        effects.append(Harmony(params['harmony_pitch1'], params['harmony_level1'],
+                               params['harmony_pitch2'], params['harmony_level2'],
+                               params['harmony_mix'], width=0.65 if has_shift else 0.0))
     if params['resonator_enabled'] and params['resonator_mix'] > 0:
         effects.append(Resonator(params['resonator_hz'],params['resonator_decay'],params['resonator_mix']))
     if params['delay_enabled'] and params['delay_mix'] > 0:
@@ -250,16 +387,16 @@ def builtin_editor_params(name):
 # Registry of predefined voices available in the application
 VOICE_PRESETS = {
     "Broadcast": {
-        "description": "Warm, clear announcer EQ without pitch shifting",
+        "description": "Studio podcaster polish: de-mud, warmth, air & gentle saturation",
         "builder": create_broadcast_voice, "category": "Natural"
     },
     "Warm Low": {
-        "description": "Subtle lower voice, minus 2 semitones",
-        "builder": lambda: create_deep_voice(-2), "category": "Natural"
+        "description": "Subtle natural lower voice with preserved vocal clarity",
+        "builder": create_warm_low_voice, "category": "Natural"
     },
     "Bright": {
-        "description": "Subtle brighter voice, plus 2 semitones",
-        "builder": lambda: create_chipmunk_voice(2), "category": "Natural"
+        "description": "Crisp, airy vocal lift with full high-end presence",
+        "builder": create_bright_voice, "category": "Natural"
     },
     "Clean (Normal)": {
         "description": "Original microphone voice with clean leveling",
@@ -267,23 +404,28 @@ VOICE_PRESETS = {
         "category": "Basic"
     },
     "Deep (Vader)": {
-        "description": "Deep cinematic pitch shift with bass boost",
-        "builder": lambda: create_deep_voice(-3.5),
+        "description": "Dark masked villain: deep pitch, darkened formant & mask resonance",
+        "builder": lambda: create_deep_voice(-4.5),
         "category": "Characters"
     },
     "Monster / Demon": {
-        "description": "Terrifying sub-pitch with distortion and presence",
+        "description": "Deep sub-pitch with oversampled grit and ducked dark ambience",
         "builder": create_monster_voice,
         "category": "Characters"
     },
     "Chipmunk": {
-        "description": "High-pitched cartoon / chipmunk voice",
-        "builder": lambda: create_chipmunk_voice(5.0),
+        "description": "High-pitched cartoon voice with upward formant shaping",
+        "builder": lambda: create_chipmunk_voice(6.5),
         "category": "Characters"
     },
     "Cyborg Robot": {
-        "description": "Mechanical metallic modulation with bitcrush",
+        "description": "Metallic android voice with ring mod, resonator & bitcrush",
         "builder": create_robot_voice,
+        "category": "Sci-Fi"
+    },
+    "Synth Vocoder": {
+        "description": "16-band harmonic synth vocoder with crisp consonant air",
+        "builder": create_vocoder_voice,
         "category": "Sci-Fi"
     },
     "Walkie-Talkie": {
@@ -296,25 +438,75 @@ VOICE_PRESETS = {
         "builder": create_telephone_voice,
         "category": "Filters"
     },
+    "PA Stadium": {
+        "description": "Arena horn megaphone with slapback echo and crowd-hall decay",
+        "builder": create_pa_stadium_voice,
+        "category": "Filters"
+    },
+    "Vintage Radio": {
+        "description": "1940s tube broadcast with midrange horn focus & warm drive",
+        "builder": create_vintage_radio_voice,
+        "category": "Filters"
+    },
     "Astronaut": {
-        "description": "Helmet intercom with delay and space reverb",
+        "description": "Helmet comms with radio squelch, cavity resonance & subtle echo",
         "builder": create_astronaut_voice,
         "category": "Sci-Fi"
     },
     "8-Bit Arcade": {
-        "description": "Gentle retro digital character with 9-bit depth",
+        "description": "Retro console crunch with 8.5 kHz sample-hold & 7-bit depth",
         "builder": create_retro_8bit,
         "category": "Sci-Fi"
     },
     "Cathedral Echo": {
-        "description": "Spacious hall with clear foreground speech",
+        "description": "Spacious pre-delayed hall that ducks under active speech",
         "builder": create_cathedral_voice,
         "category": "Atmosphere"
     },
+    "Underwater": {
+        "description": "Submerged resonant low-pass with liquid phaser & chorus sweep",
+        "builder": create_underwater_voice,
+        "category": "Atmosphere"
+    },
     "Alien": {
-        "description": "Extraterrestrial voice with phase modulation",
+        "description": "Otherworldly split pitch/formant warp with phaser movement",
         "builder": create_alien_voice,
         "category": "Sci-Fi"
+    },
+    "Envelope Talkbox": {
+        "description": "Speech-reactive dual vowel filter sweep triggered by syllable loudness",
+        "builder": create_talkbox_voice,
+        "category": "Filters"
+    },
+    "Shadow Whisper": {
+        "description": "Pitchless spectral-noise whisper preserving articulation without vocal cords",
+        "builder": create_whisper_voice,
+        "category": "Atmosphere"
+    },
+    "Cyber Shifter": {
+        "description": "Analytic single-sideband frequency shift (+62 Hz linear inharmonic warp)",
+        "builder": create_shifter_voice,
+        "category": "Sci-Fi"
+    },
+    "Sub-Bass Titan": {
+        "description": "Zero-latency f0/2 subharmonic octave generator paired with crisp air exciter",
+        "builder": create_titan_voice,
+        "category": "Characters"
+    },
+    "Backmask": {
+        "description": "Overlapping 85 ms reversed grains for surreal backwards-syllable speech",
+        "builder": create_backmask_voice,
+        "category": "Atmosphere"
+    },
+    "Celestial Shimmer": {
+        "description": "Granular +12 st octave-up feedback reverb cloud under clean lead speech",
+        "builder": create_shimmer_voice,
+        "category": "Atmosphere"
+    },
+    "Broken Cassette": {
+        "description": "Dual-LFO fractional-delay tape wow & flutter with asymmetric hysteresis",
+        "builder": create_cassette_voice,
+        "category": "Filters"
     }
 }
 
@@ -441,3 +633,108 @@ def delete_user_preset(name):
     current = _read_presets()
     current.pop(name, None)
     _write_presets(current)
+
+
+PRESET_BUNDLE_FORMAT = "voice-studio-preset"
+
+
+def _write_json_file(dest_path, payload):
+    directory = os.path.dirname(os.path.abspath(dest_path)) or "."
+    os.makedirs(directory, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".export-", suffix=".json", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as target:
+            json.dump(payload, target, indent=2, allow_nan=False)
+            target.flush()
+            os.fsync(target.fileno())
+        os.replace(temporary, dest_path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def _exportable_params(name, custom_params=None):
+    if custom_params is not None:
+        p = custom_params
+        return validate_params(p.get("pitch", 0), p.get("distortion", 0), p.get("reverb", 0),
+                               p.get("bitcrush", 16), base_voice=p.get("base_voice"),
+                               **{k: p[k] for k in EXTRA_DEFAULTS if k in p})
+    user = _read_presets()
+    if name in user:
+        p = user[name]
+        return validate_params(p.get("pitch", 0), p.get("distortion", 0), p.get("reverb", 0),
+                               p.get("bitcrush", 16), base_voice=p.get("base_voice"),
+                               **{k: p[k] for k in EXTRA_DEFAULTS if k in p})
+    if name in VOICE_PRESETS:
+        return builtin_editor_params(name)
+    raise ValueError(f"Voice '{name}' was not found to export.")
+
+
+def export_voice_preset(name, dest_path, custom_params=None):
+    """Export one voice preset (built-in, saved custom, or current editor state) to a shareable JSON/.vmvoice file."""
+    clean_name = (name or "").strip() or "Custom voice"
+    params = _exportable_params(clean_name, custom_params=custom_params)
+    payload = {"format": PRESET_BUNDLE_FORMAT, "version": 1, "voices": {clean_name: params}}
+    _write_json_file(dest_path, payload)
+    return dest_path
+
+
+def export_voice_pack(dest_path, names=None):
+    """Export multiple saved custom voices into one shareable voice pack file."""
+    user = _read_presets()
+    selected = list(user.keys()) if names is None else [n for n in names if n in user]
+    if not selected:
+        raise ValueError("No saved custom voices available to export.")
+    voices_payload = {n: _exportable_params(n) for n in selected}
+    payload = {"format": PRESET_BUNDLE_FORMAT, "version": 1, "voices": voices_payload}
+    _write_json_file(dest_path, payload)
+    return list(voices_payload.keys())
+
+
+def _unique_import_name(raw_name, current, conflict="rename"):
+    base = (raw_name or "").strip()[:80]
+    if not base:
+        raise ValueError("Preset entry is missing a valid name.")
+    candidate = base
+    if candidate in VOICE_PRESETS:
+        candidate = f"{base[:69]} (Imported)"
+    if conflict == "overwrite" and candidate not in VOICE_PRESETS:
+        return candidate
+    index = 2
+    final = candidate
+    while final in current or final in VOICE_PRESETS:
+        suffix = f" ({index})"
+        final = f"{candidate[:80 - len(suffix)]}{suffix}"
+        index += 1
+    return final
+
+
+def import_voice_presets(src_path, conflict="rename"):
+    """Import a shared .vmvoice/.json preset or pack into user custom presets."""
+    with open(src_path, encoding="utf-8") as source:
+        data = json.load(source)
+    if not isinstance(data, dict):
+        raise ValueError("Shared preset file must contain a JSON object.")
+    entries = data["voices"] if data.get("format") == PRESET_BUNDLE_FORMAT and isinstance(data.get("voices"), dict) else data
+    if not entries:
+        raise ValueError("No voices found in preset file.")
+
+    current = _read_presets()
+    imported = []
+    for raw_name, params in entries.items():
+        if not isinstance(params, dict):
+            raise ValueError(f"Invalid preset settings for '{raw_name}'.")
+        base_voice = params.get("base_voice")
+        if base_voice is not None and base_voice not in VOICE_PRESETS:
+            base_voice = None
+        validated = validate_params(
+            params.get("pitch", 0), params.get("distortion", 0),
+            params.get("reverb", 0), params.get("bitcrush", 16),
+            base_voice=base_voice,
+            **{k: params[k] for k in EXTRA_DEFAULTS if k in params}
+        )
+        target_name = _unique_import_name(raw_name, current, conflict=conflict)
+        current[target_name] = validated
+        imported.append(target_name)
+    _write_presets(current)
+    return imported

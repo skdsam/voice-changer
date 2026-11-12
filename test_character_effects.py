@@ -1,4 +1,4 @@
-﻿import unittest,tempfile
+import unittest,tempfile
 from pathlib import Path
 from unittest.mock import patch
 import numpy as np
@@ -24,7 +24,7 @@ class CharacterEffectsTests(unittest.TestCase):
         source=np.random.default_rng(4).normal(0,.03,(2,12000)).astype('float32')
         effect=Harmony(0,.4,0,.3,.7)
         output=np.concatenate([effect(source[:,i:i+333],48000) for i in range(0,12000,333)],axis=1)
-        delay=int(48000*.12)
+        delay=effect.latency_frames(48000)
         np.testing.assert_allclose(output[:,delay:],source[:,:-delay],atol=1e-6)
         effect.reset()
 

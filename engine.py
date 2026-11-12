@@ -10,8 +10,9 @@ from collections import deque
 import numpy as np
 import sounddevice as sd
 from pedalboard.io import AudioFile
-from pedalboard import Resample, Limiter
+from pedalboard import Resample
 from voices import create_clean_voice
+from voice_effects import SoftCeilingLimiter, MicConditioner
 from monitor_resampler import MonitorResampler
 from route_isolation import VoicemodSessionGuard
 
@@ -55,7 +56,9 @@ class AudioEngine:
         # Devices
         self.last_error = None
         self.callback_status_count = 0
-        self._limiter = Limiter(threshold_db=-1.0, release_ms=80.0)
+        self.mic_hygiene_enabled = True
+        self._conditioner = MicConditioner(gate_db=-52.0, deess_threshold_db=-24.0)
+        self._limiter = SoftCeilingLimiter(threshold=0.75, ceiling=0.97)
         self.input_device = None
         self.output_device = None
 
@@ -87,6 +90,17 @@ class AudioEngine:
             pedalboard_instance.prepare(self.sample_rate, channels)
         with self._lock:
             self.current_board = pedalboard_instance
+
+    def set_mic_hygiene(self, enabled: bool):
+        """Enable or bypass pre-DSP mic conditioning (soft expander + de-esser)."""
+        self.mic_hygiene_enabled = bool(enabled)
+        self._conditioner.reset()
+
+    def current_latency_ms(self):
+        """Estimated DSP + audio block latency in milliseconds."""
+        rate = max(1, int(self.sample_rate))
+        dsp_frames = self.current_board.latency_frames(rate) if hasattr(self.current_board, 'latency_frames') else 0
+        return (dsp_frames + self.blocksize) / rate * 1000.0
 
     def set_monitor(self, enabled: bool, device_id=None):
         """Toggle headphone monitoring without affecting the main application output."""
@@ -208,6 +222,11 @@ class AudioEngine:
             self.sfx_buffer = None
             self.sfx_pos = 0
 
+    @property
+    def is_sound_playing(self):
+        with self._sfx_lock:
+            return self.sfx_buffer is not None
+
     def _audio_callback(self, indata, outdata, frames, time_info, status):
         """High-priority audio callback called by PortAudio for each block."""
         if status:
@@ -222,6 +241,8 @@ class AudioEngine:
                 processed = np.zeros((indata.shape[1], frames), dtype=np.float32)
             else:
                 audio_in = indata.T
+                if self.mic_hygiene_enabled:
+                    audio_in = self._conditioner(audio_in, sample_rate=self.sample_rate)
                 with self._lock:
                     board = self.current_board
 
@@ -333,6 +354,7 @@ class AudioEngine:
                 self._route_guard=VoicemodSessionGuard(names)
                 self._route_guard.start()
             self.current_board.prepare(self.sample_rate, in_channels)
+            self._conditioner.reset()
             self._limiter.reset()
             self.last_error = None
             self.callback_status_count = 0

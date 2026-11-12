@@ -1,4 +1,4 @@
-﻿"""Native SoundTouch streaming pitch processing with a fixed output reservoir."""
+"""Native SoundTouch streaming pitch processing with a fixed output reservoir."""
 import ctypes as ct
 from pathlib import Path
 import numpy as np
@@ -41,11 +41,11 @@ class SoundTouchPitch:
         if not _LIB.soundtouch_setChannels(self.handle, channels):
             raise ValueError('Unsupported channel count')
         _LIB.soundtouch_setPitchSemiTones(self.handle, float(semitones))
-        # Full overlap search and anti-alias filtering, speech-sized windows.
-        for setting, value in ((0, 1), (1, 32), (2, 0), (3, 40), (4, 15), (5, 8)):
+        # Speech-tuned overlap search and anti-alias filtering (~75 ms startup reservoir).
+        for setting, value in ((0, 1), (1, 32), (2, 0), (3, 28), (4, 12), (5, 7)):
             if not _LIB.soundtouch_setSetting(self.handle, setting, value):
                 raise RuntimeError(f'SoundTouch rejected setting {setting}')
-        self.startup_frames = int(rate * .12)
+        self.startup_frames = int(rate * .075)
         self.pending = np.zeros((self.startup_frames, channels), dtype=np.float32)
 
     def close(self):
@@ -104,6 +104,15 @@ class VoiceChain:
     @property
     def underruns(self):
         return sum(p.underruns for p in self._processors.values()) + sum(getattr(stage, "underruns", 0) for stage in self.stages)
+
+    def latency_frames(self, rate):
+        total = 0
+        for stage in self.stages:
+            if isinstance(stage, float) and abs(stage) > .05:
+                total += int(rate * .075)
+            elif hasattr(stage, 'latency_frames'):
+                total += int(stage.latency_frames(rate))
+        return total
 
     def reset(self):
         for processor in self._processors.values():

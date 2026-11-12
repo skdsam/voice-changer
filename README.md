@@ -1,84 +1,126 @@
 # Voice Studio
 
-A Windows desktop voice changer with a compact voice library, custom effects, and independent headphone monitoring. This replaces the previous Rust/Slint prototype, which remains in Git history.
+A focused Windows microphone voice changer with 14 effect presets and saved custom voices.
 
 ## Run
 
-Requires Windows 10/11 and Python 3.11 x64 (the tested version).
-
 ```powershell
-git clone https://github.com/skdsam/voice-changer.git
-cd voice-changer
-py -3.11 -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe app.py
+python -m pip install -r requirements.txt
+python app.py
 ```
 
-No compilation is needed. Keep `vendor/soundtouch` alongside the Python files.
+Select your microphone, a virtual cable as App output, and your headphones as Monitor. Choose a voice, then start. Hear myself independently enables headphone monitoring; untick it while leaving the processed App output running.
 
-## Everyday use
+Adjust pitch, distortion, reverb and bit depth, then use Save Current Settings as New Preset. Saved voices appear in the voice list and are stored in custom_presets.json. Names must differ from built-in names. Existing custom names are replaced when saved again. Invalid settings are rejected and saves use atomic replacement. Back up this JSON file to transfer voices.
 
-1. Open **Audio setup** once and select your physical microphone and headphones.
-2. Select **Headset preview only** for a local test, or a compatible virtual audio device's playback endpoint to send effects to other apps.
-3. Choose a voice and press **Start voice changer**.
-4. Tick **Hear myself** to hear the effects. Untick it to silence headphones while virtual-device output continues.
-5. Press **Stop voice changer** when finished.
+## Use in Discord or games
 
-Device choices are remembered locally. Microphone mute and master volume apply to both outputs. If the main output and monitor are the same headset, the app uses checkbox-controlled preview mode.
+A separate working virtual audio cable is required. Select its playback endpoint as this app's output and its paired recording endpoint as the game's microphone. Endpoint names may differ (for VB-Cable, typically CABLE Input is playback and CABLE Output is recording). The app does not install a driver or create a virtual microphone. No suitable cable endpoint was exposed in the device inventory during this session. A Voicemod executable alone does not establish that its driver is usable by this app.
 
-## Discord, games and Windows defaults
+## Sound and latency
 
-The app does not install a virtual microphone driver or change Windows defaults. Other apps using the physical headset microphone directly receive the original voice.
+Pitch processing now uses the native SoundTouch 2.3.3 library instead of the original two-tap delay effect. Pitch voices use a 120 ms output reservoir to absorb the library's burst output without inserting gaps. Device latency is additional; actual end-to-end latency has not been measured. Non-pitch voices do not use this reservoir.
 
-With VB-Cable, choose **CABLE Input** as Voice Studio's output and **CABLE Output** as the other app's microphone. For apps following Windows defaults, set the virtual recording endpoint as the default input/default communications input once. Keep headphones as default playback.
+Start with Broadcast (no pitch transformation), Warm Low (-2 semitones) or Bright (+2 semitones) for everyday use. Character presets have reduced distortion, modulation and echo to retain speech clarity. Extreme custom settings remain intentionally capable of heavy effects. Existing custom preset parameter values are preserved, but their output changes with the upgraded engine and gain staging.
 
-Voicemod virtual outputs are also detected. One installation's `Dummy Output (Voicemod)` / `Microphone (Voicemod)` MME pair passed a synthetic loopback check. Compatibility is not guaranteed across releases, and those endpoints may disappear when Voicemod closes. No Voicemod drivers, binaries or voice assets are included. The app tries to match the physical input's host API to the virtual output.
+SoundTouch handles pitch; an optional separate spectral-envelope effect now provides approximate independent formant shifting. These are DSP voices, not AI speaker models, and natural identity replacement is not implemented. Subjective quality still depends on the microphone and source voice.
 
-## Voices and custom effects
+Effect state persists between callbacks. A final limiter and finite-value check protect output. Processing errors appear in the status line. Soundboard controls are omitted from the UI to keep it focused on voices.
 
-19 built-in presets include Clean, Broadcast, Warm Low, Bright, Deep, Monster, Chipmunk, Cyborg, Walkie-Talkie, Telephone, Astronaut, 8-Bit, Cathedral, Alien, Space Marine, Ghost, Goblin, Hive Mind and Kid (DSP prototype).
+For more natural identity transformations, an independently evaluated formant-preserving or neural conversion backend is a future addition. No AI model loading or training is implemented.
 
-The custom editor provides pitch, approximate formant shifting, warmth/presence/brightness EQ, doubler, ring modulation, distortion, bit depth and reverb. Blend controls let you reduce the stronger effects. Select a voice and click **Edit this voice** to copy its primary settings into the editor. Built-in variations preserve the original filters, including filters without dedicated sliders. Adjust controls and save under a new name. Changing a primary control replaces that part of the copied chain; it does not stack an extra pitch shifter on top.
-
-Save named custom voices to the library. Settings are validated and saved atomically to `custom_presets.json`. Older presets load neutral defaults for newer effects. Custom voices and `audio_settings.json` are local and ignored by Git.
-
-## Quality and latency
-
-These are DSP effects, not neural speaker-conversion models. Formant shifting approximates spectral-envelope movement, not vocal-tract modeling. Extreme shifts can sound artificial; start with Broadcast, Warm Low or Bright.
-
-Pitch voices use a 120 ms output reservoir. Formant processing adds 1024 frames (about 21 ms at 48 kHz). Device buffering adds further latency. Final output is limited and checked for non-finite samples.
-
-Headphone monitoring has a separate stream, supported-rate negotiation and bounded queue. A continuous linear resampler converts only the monitor feed when sample rates differ. A monitor startup failure leaves application output running. Hardware compatibility, end-to-end latency and subjective quality need checking on the target setup.
-
-## Tests
+## Validation
 
 ```powershell
-.\.venv\Scripts\python.exe -m unittest -v test_presets test_voice_effects test_monitoring test_voice_editing
+python -m unittest -v test_presets
 ```
 
-38 tests cover preset streaming, pitch accuracy, formant behavior, ring-modulation sidebands, effect order, settings compatibility, monitoring isolation, sample-rate fallback and resampling continuity. Hardware startup is mocked in the suite.
+Tests cover all 14 built-in voices over continuous 512-sample blocks at 44.1/48 kHz, non-silent finite bounded output, native pitch accuracy over ?12 semitones, stereo agreement, buffer underruns, effect order, reverb tails, and custom preset persistence/validation. They do not establish subjective quality, real hardware latency, or stability over long sessions. Listen with your microphone before relying on any preset.
 
-## Listening comparisons
+## REA investigation
+
+Used the CLI distributed by https://github.com/morluto/rea against the locally installed C:\Program Files\Voicemod V3\Voicemod.exe. The CLI reported version 4.0.1. Artifact inspection identified a PE file and recorded its SHA-256. Evidence is in analysis/voicemod-artifact.json. Deeper native analysis failed because no supported provider was configured; diagnostics are in analysis/voicemod-analysis.json. No conclusions about Voicemod's internal audio algorithms or models can be drawn from that inspection.
+
+## Listening previews
+
+The previews directory contains the same Windows synthesized speech passed through each preset. These are comparison artifacts, not recordings of your microphone. Start with Broadcast.wav, Warm_Low.wav, Bright.wav and Deep_Vader.wav.
+
+To compare on your own recorded speech:
 
 ```powershell
-.\.venv\Scripts\python.exe render_previews.py my-speech.wav --output my-previews
+python render_previews.py my-speech.wav --output my-previews
 ```
 
-Processes the same recording through each built-in preset using the live callback and limiter, adding a short tail for buffered speech and ambience.
+The renderer runs the same callback and limiter used for live output. A two-second silence tail is added for buffered speech and ambience.
 
-## Third-party components
+## Native dependency
 
-See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). The unmodified SoundTouch 2.3.3 x64 DLL, license, C API header, provenance and upstream source archive are included in `vendor/soundtouch`.
+Windows x64 Python is required for the bundled SoundTouch DLL. Keep vendor/soundtouch alongside the Python files. The unmodified DLL package was downloaded from the official SoundTouch site. Its license, headers, source link and binary SHA-256 hashes are included in that directory. See vendor/soundtouch/COPYING.TXT and provenance.json. Missing or incompatible DLLs produce a startup error instead of silently using the old lower-quality effect.
 
-## Global Start/Stop shortcut
+Native pitch benchmarks are recorded in analysis/pitch-benchmark.json. A separate 60-second simulated stereo stream at -12 semitones/48 kHz completed with zero native buffer underruns. These are offline processing checks, not hardware drop-out or subjective listening measurements.
 
-The bottom control defaults to **Ctrl+Alt+V**. It starts or stops the audio stream, including while the window is minimized or another app has focus. The selector also offers Ctrl+Alt+F8, F8, F9, F10 and Disabled. The selected key is remembered in local audio settings. Holding a key does not repeatedly toggle the stream.
+The expanded Voicemod inspection is documented in analysis/voice-quality-investigation.md. It found native pitch/formant, SoundTouch, denoising and AI-related components in the larger per-user app, but did not recover individual voice implementations.
 
-If another app owns the combination, registration reports a conflict. A previously active shortcut stays registered when a replacement fails. Closing Voice Studio releases the shortcut. The shortcut uses Windows RegisterHotKey; it does not record general keyboard input.
+## Desktop interface
 
-**Stop** stops sending audio to the virtual microphone; it is not a clean-voice bypass. **Hear myself** remains independent.
+The UI uses a charcoal and mint theme, a searchable/category-filtered voice library, a separate custom editor, and persistent audio controls. Both content panels scroll at smaller window sizes. Ctrl+F focuses search; native buttons and sliders support keyboard navigation. Selected voices have a text indicator as well as a color change. Device changes are disabled while streaming. Restart the app to load the new interface.
 
-Tests verify that recalling all built-ins without edits produces the original audio, primary pitch edits retain the remaining effects, and saved variations retain their built-in base. Existing custom voices without a built-in base remain supported.
+Design guidance: UI/UX Pro Max, installed locally under .agents/skills/ui-ux-pro-max. Its flat-design, contrast, focus and spacing guidance was adapted to Tkinter; web landing-page and mobile-only recommendations were not applied.
+
+## Additional custom effects
+
+Scroll through the custom editor to access:
+
+- Formant shift: -6 to +6 semitones of approximate spectral-envelope shifting, with an aligned dry/wet blend. Negative values darken resonance; positive values brighten it. Harmonic frequencies are retained. It is not a neural voice model and large shifts can sound colored. It adds 1024 frames of delay (about 21 ms at 48 kHz) when enabled, in addition to any pitch buffering.
+- Tone EQ: warmth (200 Hz shelf), presence (2.5 kHz peak), brightness (5 kHz shelf), each +/-9 dB. Tone blend scales all three gains toward neutral.
+- Doubler: a gently modulated 18 ms chorus delay with dry/wet blend.
+- Ring modulation: a continuous 20-500 Hz carrier and dry/wet blend for metallic/robotic textures.
+
+All new settings are saved with custom voices. Older preset files receive neutral defaults. Save and Reset remain pinned below the scrollable editor. These controls build a new custom chain; they do not edit the selected built-in preset's internal chain.
+
+The former Send audio / Output enabled control has been replaced by Hear myself. Select a virtual cable for App output and headphones for Monitor. There are now independent application and headphone outputs; see the monitoring section below.
+
+Run all effect and preset checks with `python -m unittest -v test_presets test_voice_effects`. Checks include ring-modulation sidebands, formant envelope movement with retained harmonics, chunk continuity, aligned dry blending, combined processing and old/new preset round trips. Offline combined-effect timing was below the 10.67 ms callback budget in a local 1000-block run; this does not measure hardware latency or guarantee realtime scheduling.
+
+## Hear myself / independent monitoring
+
+- App output / virtual cable: receives the processed voice whenever the voice changer is running.
+- Headphones / monitor: select your physical headphones. Tick Hear myself to hear the processed voice; untick it to silence only the monitor. It defaults to off.
+- In Discord or the game, select the virtual cable's paired recording endpoint as the microphone. For VB-Cable, this is usually CABLE Output, while this app sends to CABLE Input.
+- Keep App output separate from your physical headphones. Sending the main output to speakers will remain audible regardless of the monitor checkbox.
+- Mute microphone affects microphone audio on both paths. Volume applies to both paths.
+
+The monitor uses a separate sounddevice OutputStream and a bounded audio queue; voice DSP runs once. Turning monitoring off clears its queue. A headphone startup failure leaves App output running and displays an error. Devices cannot be changed while streaming. The monitor negotiates its own supported sample rate and resamples the preview when it differs from the application stream.
+
+Validation: `python -m unittest -v test_monitoring test_presets test_voice_effects` (15 tests). Monitoring tests cover main output with monitoring disabled, identical processed monitor audio, queue clearing, partial block reads, bounded buffering, same-headset preview switching, and independent failure handling. They use mocked device startup; full app-to-virtual-cable routing has not been tested because this machine did not expose a virtual cable endpoint during implementation.
+
+## Simple headset setup
+
+For the Stealth 500PC, select Microphone (Stealth 500PC) as Microphone and Speakers (Stealth 500PC) as Headphones / Monitor. Leave optional App output on Headset preview only. Start the changer, then tick Hear myself to listen; untick it to silence the preview. Choosing the headset itself as optional App output also uses this checkbox-controlled preview mode, without opening a duplicate monitor stream.
+
+Preview mode requires no virtual cable and does not change Windows defaults or the microphone signal received by other applications. Those apps still receive the original headset microphone. To use effects in apps that follow Windows defaults, install a working virtual audio cable, select its playback endpoint as this app's optional output, and make its paired recording endpoint the Windows default input (including the default communications input where needed). Keep the headset as default playback. Apps with an explicit microphone override need that override changed separately. No Windows defaults or audio drivers are changed automatically by this app.
+
+## Simple everyday controls
+
+Audio Setup is now collapsed by default. The app remembers the microphone, virtual output and monitor by name in audio_settings.json, so changing device indices after restarting Windows does not by itself lose selections. Start/Stop and Hear myself remain visible.
+
+On this installation, a later check exposed Voicemod's Microphone and Dummy Output endpoints. A synthetic loopback probe verified the MME pair (normalized correlation about 0.91); evidence is in analysis/virtual-route-probe.json. WASAPI rejected that endpoint pair, so automatic selection uses its verified MME route with a matching MME headset input. Headphone monitoring uses a separate output stream. The headset-to-Voicemod duplex stream also opened successfully.
+
+This uses the existing Voicemod driver rather than installing a Voice Studio driver. Its availability may depend on Voicemod running. It does not prove compatibility with every Voicemod release or replace end-to-end listening in the target app. Windows' current default capture device was Microphone (Voicemod) during this check. No default-device changes were made by Voice Studio. If defaults change, select the virtual microphone as Windows default input once; keep the Stealth headset as default playback.
+
+## Headphone sample-rate compatibility
+
+The Stealth 500PC MME microphone runs at 44.1 kHz by default, while its WASAPI playback endpoint requires 48 kHz in the tested configuration. The monitor now tries the source rate, the device native rate, and standard fallback rates. A continuous, stateful linear resampler converts only the headphone feed, leaving application audio and voice processing at their original rate. Monitor toggling clears the conversion history as well as queued audio.
+
+Verified on this machine: the actual Stealth WASAPI headphone stream opened at 48 kHz with a 44.1 kHz source. All 17 tests pass, including fallback negotiation, resampling duration/pitch/chunk continuity, and the earlier routing/effect checks. This hardware check opened a silent monitor stream; it did not record or play back microphone speech.
+
+## Recall voices and global shortcut
+
+Select a voice, then click Edit this voice above the custom editor. It loads pitch, distortion, reverb and bit depth while retaining the original built-in filter chain; tone/formant/texture controls can add variation. Save under a new name to preserve the original. Recalling a saved custom voice restores its settings and built-in base, if any. Reset controls clears the base and returns to a neutral custom chain.
+
+The bottom Start/Stop shortcut defaults to Ctrl+Alt+V, works outside the focused app and can be changed or disabled. It is stored in local audio settings. Registration conflicts are shown inline; closing the app releases the shortcut. Stop halts the stream rather than bypassing effects with the clean microphone.
+
+All 20 audio/variation tests pass. A local Windows check verified hotkey registration, delivery to the Tk thread, recall and persistence. No synthetic keyboard input was sent to other applications.
 
 ## Character effects and new presets
 
@@ -121,30 +163,7 @@ For a recording test, select Microphone (Voicemod) in Windows Sound Recorder, st
 
 29 automated tests pass, including no raw input added to processed output, targeted competing-session muting, restoration, and failed-start cleanup. On the implementation machine, the live headset-to-virtual stream started with both competing Voicemod render feeds muted, then restored their original mute states on Stop. A synthetic 220-to-110 Hz pitch probe through the virtual device had the original frequency around 40 dB below the transformed frequency; this probe is not a substitute for listening to a speech recording.
 
-## Rebuilt telephone and radio / local comparison
 
-Telephone now uses cascaded band edges, handset resonance, speech compression and controlled saturation. Walkie-Talkie has distinct radio compression and bandwidth plus speech-triggered squelch. In Create a voice, expand Communications to choose Off / Telephone / Radio, adjust drive and gate threshold, or add optional static and end clicks. Texture defaults to off. Edit this voice recalls the complete communications settings; older saved variations inherit the correct channel type.
+## Quality audit and comparison
 
-Click **Test voice** to pause live output and open a local comparison window:
-
-1. Record up to eight seconds from the selected physical microphone; Stop recording ends it early.
-2. Choose a preset to process the same sample again without rerecording.
-3. Play original and Play processed use the selected headphones, active-speech RMS matching, algorithmic latency compensation and peak protection.
-4. Export pair optionally saves original.wav and processed.wav to a folder you select. Both exports have matched levels; the original is not an untouched raw archival capture.
-
-Audio stays in memory unless exported and is discarded when the test window closes. Playback is local; the live stream cannot restart while testing. The app does not restart live output automatically after closing the test. The comparison includes a two-second tail, so very long echo/reverb tails may be truncated. Level matching is RMS-based, not LUFS.
-
-Kid (DSP prototype) is a youthful pitch/formant experiment, not an established realistic child voice. A suitable neural model has not been selected or integrated. The [child-voice evaluation](docs/CHILD_VOICE_EVALUATION.md) records that open milestone rather than implying realism has been achieved.
-
-## Effect audit
-
-See the [effect-by-effect audit and quality plan](docs/AUDIO_EFFECTS_AUDIT.md) and [automated measurements](docs/AUTOMATED_AUDIT.md). The final offline run covered 140 combinations of presets and individual/stacked stress effects, with no errors, sanitized invalid samples, clipped output samples or native pitch-buffer underruns. Resonator normalization was improved to retain usable level at high decay. These are engineering checks, not a guarantee of subjective quality.
-
-Reproduce the audit without recording a microphone:
-
-```powershell
-python audit_audio.py --report-dir audit-results
-python -m unittest discover -v
-```
-
-The full suite has 38 tests. Record a real speech sample with the Stealth headset to provide the missing perceptual listening signoff.
+Use Test voice for same-sample, level-matched comparisons. See docs/AUDIO_EFFECTS_AUDIT.md and docs/AUTOMATED_AUDIT.md for the 140-configuration audit. The rebuilt telephone/radio settings are in the Communications section. Kid (DSP prototype) is available for evaluation; realistic neural conversion remains open, documented in docs/CHILD_VOICE_EVALUATION.md. The suite now contains 38 tests.

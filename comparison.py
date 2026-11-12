@@ -1,18 +1,24 @@
-﻿"""Local, level-matched A/B rendering. No audio is saved automatically."""
+"""Local, level-matched A/B rendering. No audio is saved automatically."""
 import numpy as np
 from engine import AudioEngine
-from voice_effects import Harmony,FormantShift
+from voice_effects import Harmony, FormantShift, Vocoder
 
 
-def latency_frames(board,rate):
-    total=0
-    for stage in getattr(board,'stages',[]):
-        if isinstance(stage,float) and abs(stage)>.05:
-            total+=int(rate*.12)
-        elif isinstance(stage,Harmony):
-            total+=int(rate*.12)
-        elif isinstance(stage,FormantShift):
-            total+=1024
+def latency_frames(board, rate):
+    if hasattr(board, 'latency_frames'):
+        return int(board.latency_frames(rate))
+    total = 0
+    for stage in getattr(board, 'stages', []):
+        if isinstance(stage, float) and abs(stage) > .05:
+            total += int(rate * .075)
+        elif hasattr(stage, 'latency_frames'):
+            total += int(stage.latency_frames(rate))
+        elif isinstance(stage, Harmony):
+            total += int(rate * .075)
+        elif isinstance(stage, FormantShift):
+            total += 1024
+        elif isinstance(stage, Vocoder):
+            total += 512
     return total
 
 
