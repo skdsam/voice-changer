@@ -36,7 +36,7 @@ Voicemod virtual outputs are also detected. One installation's `Dummy Output (Vo
 
 ## Voices and custom effects
 
-14 built-in presets include Clean, Broadcast, Warm Low, Bright, Deep, Monster, Chipmunk, Cyborg, Walkie-Talkie, Telephone, Astronaut, 8-Bit, Cathedral and Alien.
+18 built-in presets include Clean, Broadcast, Warm Low, Bright, Deep, Monster, Chipmunk, Cyborg, Walkie-Talkie, Telephone, Astronaut, 8-Bit, Cathedral, Alien, Space Marine, Ghost, Goblin and Hive Mind.
 
 The custom editor provides pitch, approximate formant shifting, warmth/presence/brightness EQ, doubler, ring modulation, distortion, bit depth and reverb. Blend controls let you reduce the stronger effects. Select a voice and click **Edit this voice** to copy its primary settings into the editor. Built-in variations preserve the original filters, including filters without dedicated sliders. Adjust controls and save under a new name. Changing a primary control replaces that part of the copied chain; it does not stack an extra pitch shifter on top.
 
@@ -56,7 +56,7 @@ Headphone monitoring has a separate stream, supported-rate negotiation and bound
 .\.venv\Scripts\python.exe -m unittest -v test_presets test_voice_effects test_monitoring test_voice_editing
 ```
 
-20 tests cover preset streaming, pitch accuracy, formant behavior, ring-modulation sidebands, effect order, settings compatibility, monitoring isolation, sample-rate fallback and resampling continuity. Hardware startup is mocked in the suite.
+25 tests cover preset streaming, pitch accuracy, formant behavior, ring-modulation sidebands, effect order, settings compatibility, monitoring isolation, sample-rate fallback and resampling continuity. Hardware startup is mocked in the suite.
 
 ## Listening comparisons
 
@@ -79,3 +79,26 @@ If another app owns the combination, registration reports a conflict. A previous
 **Stop** stops sending audio to the virtual microphone; it is not a clean-voice bypass. **Hear myself** remains independent.
 
 Tests verify that recalling all built-ins without edits produces the original audio, primary pitch edits retain the remaining effects, and saved variations retain their built-in base. Existing custom voices without a built-in base remain supported.
+
+## Character effects and new presets
+
+Space Marine, Ghost, Goblin and Hive Mind bring the built-in library to 18 presets. Space Marine combines a lower pitch/formant, a parallel rough layer and short helmet resonance. Ghost uses light harmony and dark echo/reverb (not a synthesized whisper or breath model). Goblin uses raised pitch/formants, nasal presence and mild rasp. Hive Mind layers two pitched companions around a lead voice.
+
+Expandable editor sections expose:
+
+- Harmony: two pitch intervals (-12 to +12 semitones), independent layer levels and overall blend. The lead is retained in the normalized stack. Harmony adds 120 ms of alignment buffering on top of any upstream pitch/formant latency.
+- Resonator: 80-1600 Hz tuning, damped feedback decay and blend, implemented as a short filtered feedback delay.
+- Delay: 20-800 ms echo time, feedback up to 75%, 500-10000 Hz echo low-pass tone and blend. Tone filtering colors the wet output, not each trip around the feedback loop.
+- Parallel distortion: 0-30 dB drive and a rough-layer blend that retains clean speech.
+
+Each new section has an On bypass switch; switching it off retains its slider values. A zero blend also bypasses the effect. All settings persist in custom voices, including variations loaded with Edit this voice. Older voices receive zero blends, preserving their previous processing.
+
+These presets are DSP character effects, not realistic AI speaker models. Local offline 48 kHz stereo runs processed 1000 blocks per new preset with zero native pitch-buffer underruns; 99th-percentile processing was under 1.4 ms per 512-frame block. This is not a measurement of hardware latency, scheduling under game load or subjective microphone quality.
+
+Run all 25 checks:
+
+```powershell
+python -m unittest -v test_presets test_voice_effects test_voice_editing test_monitoring test_character_effects
+```
+
+Tests include harmony layer frequencies/alignment, stable delay/resonator tails, bypass behavior, parameter bounds, saved settings and exact recall of the new presets. Use render_previews.py on the same speech recording to compare voices by listening.

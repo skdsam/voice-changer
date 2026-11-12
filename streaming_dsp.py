@@ -103,7 +103,7 @@ class VoiceChain:
 
     @property
     def underruns(self):
-        return sum(p.underruns for p in self._processors.values())
+        return sum(p.underruns for p in self._processors.values()) + sum(getattr(stage, "underruns", 0) for stage in self.stages)
 
     def reset(self):
         for processor in self._processors.values():
@@ -120,6 +120,8 @@ class VoiceChain:
         for index, stage in enumerate(self.stages):
             if isinstance(stage, float) and abs(stage) > .05:
                 self._processors[index] = SoundTouchPitch(stage, rate, channels)
+            elif isinstance(stage, StreamingEffect) and hasattr(stage, 'prepare'):
+                stage.prepare(rate, channels)
 
     def __call__(self, audio, sample_rate, reset=True, **kwargs):
         if reset or self._format != (sample_rate, audio.shape[0]):

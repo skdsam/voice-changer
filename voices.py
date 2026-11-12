@@ -27,7 +27,7 @@ from pedalboard import (
 )
 
 from streaming_dsp import VoiceChain
-from voice_effects import FormantShift, RingModulation
+from voice_effects import FormantShift, RingModulation, Harmony, Resonator, ToneDelay, ParallelDistortion
 
 
 def Pedalboard(effects):
@@ -143,6 +143,18 @@ EXTRA_LIMITS = dict(formant=(-6, 6), formant_mix=(0, 1), warmth=(-9, 9), presenc
                     brightness=(-9, 9), tone_mix=(0, 1), doubler_mix=(0, 1), ring_hz=(20, 500), ring_mix=(0, 1))
 
 
+EXTRA_DEFAULTS.update(harmony_enabled=1., harmony_pitch1=-7., harmony_level1=.35,
+    harmony_pitch2=7., harmony_level2=.25, harmony_mix=0., resonator_enabled=1.,
+    resonator_hz=180., resonator_decay=.55, resonator_mix=0., delay_enabled=1.,
+    delay_ms=180., delay_feedback=.25, delay_tone=4000., delay_mix=0.,
+    parallel_enabled=1., parallel_drive=12., parallel_mix=0.)
+EXTRA_LIMITS.update(harmony_enabled=(0,1), harmony_pitch1=(-12,12), harmony_level1=(0,1),
+    harmony_pitch2=(-12,12), harmony_level2=(0,1), harmony_mix=(0,1), resonator_enabled=(0,1),
+    resonator_hz=(80,1600), resonator_decay=(0,.85), resonator_mix=(0,1), delay_enabled=(0,1),
+    delay_ms=(20,800), delay_feedback=(0,.75), delay_tone=(500,10000), delay_mix=(0,1),
+    parallel_enabled=(0,1), parallel_drive=(0,30), parallel_mix=(0,1))
+
+
 def create_custom_voice(pitch_semitones=0., reverb_amount=0., distortion_db=0., bitcrush_bits=16, base_voice=None, **extras):
     params = validate_params(pitch_semitones, distortion_db, reverb_amount, bitcrush_bits, base_voice=base_voice, **extras)
     effects = []
@@ -165,9 +177,20 @@ def create_custom_voice(pitch_semitones=0., reverb_amount=0., distortion_db=0., 
                         Gain(gain_db=-min(12, params['distortion'] * .5))])
     if params['bitcrush'] < 16:
         effects.append(Bitcrush(bit_depth=params['bitcrush']))
+    if params['parallel_enabled'] and params['parallel_mix'] > 0:
+        effects.append(ParallelDistortion(params['parallel_drive'],params['parallel_mix']))
+    if params['harmony_enabled'] and params['harmony_mix'] > 0 and (params['harmony_level1']+params['harmony_level2']) > 0:
+        effects.append(Harmony(params['harmony_pitch1'],params['harmony_level1'],
+                               params['harmony_pitch2'],params['harmony_level2'],params['harmony_mix']))
+    if params['resonator_enabled'] and params['resonator_mix'] > 0:
+        effects.append(Resonator(params['resonator_hz'],params['resonator_decay'],params['resonator_mix']))
+    if params['delay_enabled'] and params['delay_mix'] > 0:
+        effects.append(ToneDelay(params['delay_ms'],params['delay_feedback'],params['delay_tone'],params['delay_mix']))
     if params['reverb'] > .01:
         effects.append(Reverb(room_size=.25 + params['reverb'] * .55,
                               damping=.6, wet_level=params['reverb'] * .3, dry_level=.95))
+    if base_voice and 'params' in VOICE_PRESETS[base_voice]:
+        return speech_chain(effects)
     if base_voice:
         base = VOICE_PRESETS[base_voice]['builder']()
         defaults = builtin_editor_params(base_voice)
@@ -197,6 +220,8 @@ def create_custom_voice(pitch_semitones=0., reverb_amount=0., distortion_db=0., 
 
 
 def builtin_editor_params(name):
+    if 'params' in VOICE_PRESETS[name]:
+        return dict(VOICE_PRESETS[name]['params'])
     params = dict(pitch=0., distortion=0., reverb=0., bitcrush=16, **EXTRA_DEFAULTS)
     for effect in VOICE_PRESETS[name]['builder']().effects:
         if isinstance(effect, NativePitchShift):
@@ -283,6 +308,15 @@ VOICE_PRESETS = {
 }
 
 
+
+def _register_character(name,description,**settings):
+    params=validate_params(settings.pop('pitch',0),settings.pop('distortion',0),
+                           settings.pop('reverb',0),settings.pop('bitcrush',16),**settings)
+    VOICE_PRESETS[name]={'description':description,'category':'Characters','params':params,
+        'builder':lambda params=params:create_custom_voice(params['pitch'],params['reverb'],params['distortion'],
+                     params['bitcrush'],**{k:params[k] for k in EXTRA_DEFAULTS})}
+
+
 def validate_params(pitch, distortion, reverb, bitcrush, base_voice=None, **extras):
     values = (float(pitch), float(distortion), float(reverb), float(bitcrush))
     for value, low, high, label in zip(values, (-12, 0, 0, 4), (12, 25, 1, 16),
@@ -300,11 +334,27 @@ def validate_params(pitch, distortion, reverb, bitcrush, base_voice=None, **extr
         low, high = EXTRA_LIMITS[key]
         if not math.isfinite(value) or not low <= value <= high:
             raise ValueError(f"{key} must be between {low} and {high}.")
+        if key.endswith('_enabled') and value not in (0.,1.):
+            raise ValueError(f'{key} must be on or off.')
         result[key] = value
     if base_voice is not None and (not isinstance(base_voice, str) or base_voice not in VOICE_PRESETS):
         raise ValueError('The original built-in voice is unavailable.')
     result['base_voice'] = base_voice
     return result
+
+
+
+_register_character('Space Marine','Heavy armored voice with metallic helmet resonance',
+    pitch=-3,formant=-2,warmth=2,presence=2,parallel_drive=15,parallel_mix=.2,
+    resonator_hz=180,resonator_decay=.55,resonator_mix=.2,delay_ms=45,delay_feedback=.1,delay_tone=3200,delay_mix=.08)
+_register_character('Ghost','Ethereal layered voice with dark trailing echoes',
+    formant=2,reverb=.55,harmony_pitch1=7,harmony_level1=.3,harmony_pitch2=12,harmony_level2=.18,
+    harmony_mix=.3,delay_ms=260,delay_feedback=.35,delay_tone=2500,delay_mix=.2,brightness=-2)
+_register_character('Goblin','Small nasal character with a restrained raspy edge',
+    pitch=2.5,formant=3,presence=4,warmth=-3,parallel_drive=12,parallel_mix=.15)
+_register_character('Hive Mind','A lead voice surrounded by two pitched companions',
+    harmony_pitch1=-7,harmony_level1=.55,harmony_pitch2=7,harmony_level2=.45,
+    harmony_mix=.65,doubler_mix=.12,reverb=.2)
 
 
 def _read_presets():

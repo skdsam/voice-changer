@@ -242,6 +242,8 @@ class VoiceModApp:
             setattr(self, attr + '_scale', scale)
         self.extra_scales = {}
         self.extra_readouts = {}
+        self.effect_enabled = {}
+        self.effect_sections = {}
         groups = [
             ('Vocal character', [('formant', 'Formant shift', .5, 'st'), ('formant_mix', 'Formant blend', .05, '%')]),
             ('Tone EQ', [('warmth', 'Warmth', .5, 'dB'), ('presence', 'Presence', .5, 'dB'),
@@ -249,13 +251,38 @@ class VoiceModApp:
             ('Layers and texture', [('doubler_mix', 'Doubler blend', .05, '%'),
                                     ('ring_hz', 'Ring frequency', 5, 'Hz'), ('ring_mix', 'Ring blend', .05, '%')]),
         ]
+        groups.extend([
+            ('Harmony', [('harmony_pitch1','Layer 1 pitch',.5,'st'),('harmony_level1','Layer 1 level',.05,'%'),
+                         ('harmony_pitch2','Layer 2 pitch',.5,'st'),('harmony_level2','Layer 2 level',.05,'%'),
+                         ('harmony_mix','Harmony blend',.05,'%')]),
+            ('Resonator', [('resonator_hz','Resonance',10,'Hz'),('resonator_decay','Decay',.05,'%'),
+                           ('resonator_mix','Resonator blend',.05,'%')]),
+            ('Delay', [('delay_ms','Echo time',5,'ms'),('delay_feedback','Feedback',.05,'%'),
+                       ('delay_tone','Echo tone',100,'Hz'),('delay_mix','Echo blend',.05,'%')]),
+            ('Parallel distortion', [('parallel_drive','Drive',1,'dB'),('parallel_mix','Rough layer blend',.05,'%')]),
+        ])
+        enable_keys={'Harmony':'harmony_enabled','Resonator':'resonator_enabled',
+                     'Delay':'delay_enabled','Parallel distortion':'parallel_enabled'}
         self.extra_units = {}
         for title, settings in groups:
-            tk.Frame(editor, bg=self.c['border'], height=1).pack(fill='x', pady=(8, 16))
-            self._label(editor, title, 12, bold=True).pack(anchor='w', pady=(0, 12))
+            tk.Frame(editor, bg=self.c['border'], height=1).pack(fill='x', pady=(8, 8))
+            header = tk.Frame(editor, bg=self.c['panel'])
+            header.pack(fill='x')
+            details = tk.Frame(editor, bg=self.c['panel'])
+            toggle = self._button(header, title+'  +', lambda t=title:self._toggle_effect_section(t))
+            toggle.configure(padx=4,pady=7,anchor='w')
+            toggle.pack(side='left',fill='x',expand=True)
+            self.effect_sections[title]=(toggle,details)
+            if title in enable_keys:
+                key=enable_keys[title]
+                variable=tk.BooleanVar(value=bool(EXTRA_DEFAULTS[key]))
+                self.effect_enabled[key]=variable
+                tk.Checkbutton(header,text='On',variable=variable,command=self._on_custom_slider_change,
+                    bg=self.c['panel'],fg=self.c['text'],selectcolor=self.c['raised'],
+                    activebackground=self.c['panel'],activeforeground=self.c['accent']).pack(side='right')
             for key, label, step, unit in settings:
-                row = tk.Frame(editor, bg=self.c['panel'])
-                row.pack(fill='x')
+                row = tk.Frame(details, bg=self.c['panel'])
+                row.pack(fill='x',pady=(8,0))
                 self._label(row, label, 10).pack(side='left')
                 self.extra_units[key] = unit
                 value = EXTRA_DEFAULTS[key]
@@ -263,14 +290,26 @@ class VoiceModApp:
                 readout.pack(side='right')
                 self.extra_readouts[key] = readout
                 low, high = EXTRA_LIMITS[key]
-                scale = self._scale(editor, low, high, step, self._on_custom_slider_change)
+                scale = self._scale(details, low, high, step, self._on_custom_slider_change)
                 scale.set(value)
-                scale.pack(fill='x', pady=(2, 12))
+                scale.pack(fill='x', pady=(2, 8))
                 self.extra_scales[key] = scale
+            if title == 'Vocal character':
+                details.pack(fill='x')
+                toggle.configure(text=title+'  -')
         self._label(editor, 'Formant changes resonance, not pitch. Blend 0% bypasses an effect.',
                     9, 'muted', wraplength=245, justify='left').pack(anchor='w', pady=(4, 12))
         self._button(editor_actions, 'Save custom voice', self._save_preset_prompt, True).pack(fill='x', pady=(4, 8))
         self._button(editor_actions, 'Reset controls', self._reset_controls).pack(fill='x')
+
+    def _toggle_effect_section(self, title):
+        toggle,details=self.effect_sections[title]
+        if details.winfo_manager():
+            details.pack_forget()
+            toggle.configure(text=title+'  +')
+        else:
+            details.pack(fill='x',after=toggle.master)
+            toggle.configure(text=title+'  -')
 
     def _scale(self, parent, low, high, step, command, **kwargs):
         return tk.Scale(parent, from_=low, to=high, resolution=step, orient='horizontal', showvalue=False,
@@ -332,6 +371,8 @@ class VoiceModApp:
                 getattr(self, attr+'_scale').set(preset['params'][key])
             for key, scale in self.extra_scales.items():
                 scale.set(preset['params'].get(key, EXTRA_DEFAULTS[key]))
+            for key,variable in self.effect_enabled.items():
+                variable.set(bool(preset['params'].get(key,EXTRA_DEFAULTS[key])))
             self.root.update()
             self._syncing = False
             self._readouts()
@@ -348,6 +389,8 @@ class VoiceModApp:
                 getattr(self, attr+'_scale').set(params[key])
             for key, scale in self.extra_scales.items():
                 scale.set(params.get(key, EXTRA_DEFAULTS[key]))
+            for key,variable in self.effect_enabled.items():
+                variable.set(bool(params.get(key,EXTRA_DEFAULTS[key])))
             self.root.update()
         finally:
             self._syncing = False
@@ -408,7 +451,8 @@ class VoiceModApp:
         return f'{value:+.1f} {unit}' if unit in ('st', 'dB') else f'{value:.0f} {unit}'
 
     def _extra_values(self):
-        return {key: scale.get() for key, scale in self.extra_scales.items()}
+        return {**{key: scale.get() for key, scale in self.extra_scales.items()},
+                **{key:float(variable.get()) for key,variable in self.effect_enabled.items()}}
 
     def _readouts(self):
         self.pitch_val_lbl.configure(text=f'{self.pitch_scale.get():+.1f} st')
@@ -416,6 +460,8 @@ class VoiceModApp:
         self.reverb_val_lbl.configure(text=f'{self.reverb_scale.get()*100:.0f}%')
         self.bit_val_lbl.configure(text=f'{self.bit_scale.get():.0f} bits')
         for key, value in self._extra_values().items():
+            if key not in self.extra_readouts:
+                continue
             self.extra_readouts[key].configure(text=self._format_extra(value, self.extra_units[key]))
 
     def _on_custom_slider_change(self, _=None):
@@ -447,6 +493,8 @@ class VoiceModApp:
             getattr(self, attr+'_scale').set(value)
         for key, scale in self.extra_scales.items():
             scale.set(EXTRA_DEFAULTS[key])
+        for key,variable in self.effect_enabled.items():
+            variable.set(bool(EXTRA_DEFAULTS[key]))
         self.root.update()
         self._syncing = False
         self._readouts()
