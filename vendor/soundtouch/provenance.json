@@ -1,0 +1,12 @@
+{
+  "version": "2.3.3",
+  "download": "https://www.surina.net/soundtouch/soundtouch_dll-2.3.3.zip",
+  "source": "https://codeberg.org/soundtouch/soundtouch",
+  "license": "LGPL-2.1-or-later; see COPYING.TXT",
+  "runtime": "SoundTouchDLL_x64.dll",
+  "sha256": {
+    "SoundTouchDLL_x64.dll": "33caafa82b5e89e66d2ca4f9e2137aae1a1e2693f119c62236295878c61406ea",
+    "soundtouch-2.3.3.tar.gz": "43b23dfac2f64a3aff55d64be096ffc7b73842c3f5665caff44975633a975a99"
+  },
+  "source_archive": "https://www.surina.net/soundtouch/soundtouch-2.3.3.tar.gz"
+}
